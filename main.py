@@ -62,10 +62,24 @@ def ftext(text):
     return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
 
 
-# ---------- غیرفعال کردن موقت فونت فارسی ----------
-# برای جلوگیری از کرش ناشی از فونت، از فونت پیش‌فرض استفاده می‌کنیم.
+# ---------- فعال‌سازی مجدد فونت فارسی با ایمنی ----------
 FONT_FILE = None
 _FONT_NAME = "Roboto"
+
+if platform == "android":
+    candidate = "fonts/Vazirmatn-Light.ttf"
+    if os.path.exists(candidate):
+        try:
+            LabelBase.register(name="PersianFont", fn_regular=candidate)
+            FONT_FILE = candidate
+            _FONT_NAME = "PersianFont"
+        except Exception as e:
+            print(f"font registration failed: {e}")
+    else:
+        print("font file not found, using Roboto")
+else:
+    # برای محیط‌های غیر اندروید (مثل Colab) فونت پیش‌فرض
+    _FONT_NAME = "Roboto"
 
 
 class PersianLabel(Label):
@@ -118,8 +132,9 @@ class ScreenRecorderApp(App):
             except Exception as e:
                 print(f"bind activity failed: {e}")
 
-            # درخواست مجوزها را موقتاً غیرفعال کردیم تا ببینیم کرش از کجاست
-            # self._request_runtime_permissions()
+            # درخواست مجوزها را با تاخیر و داخل try/except فعال می‌کنیم
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda dt: self._request_runtime_permissions(), 1)
 
         return layout
 
