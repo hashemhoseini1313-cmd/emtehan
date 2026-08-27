@@ -11,7 +11,7 @@ from kivy.utils import platform
 
 import arabic_reshaper
 
-# ---------- مقادیر پیش‌فرض برای اندروید ----------
+# ---------- متغیرهای اندروید ----------
 android_activity = None
 autoclass = None
 cast = None
@@ -42,10 +42,13 @@ if platform == "android":
 
 
 def ftext(text):
-    """اصلاح چسبندگی حروف، معکوس‌سازی و اصلاح هوشمند جابه‌جایی پرانتزها"""
     if not text:
         return ""
-    reshaped_text = arabic_reshaper.reshape(text)
+    try:
+        reshaped_text = arabic_reshaper.reshape(text)
+    except Exception:
+        reshaped_text = text
+    # تعویض پرانتزها و معکوس‌سازی ساده
     swapped = []
     for char in reshaped_text:
         if char == '(':
@@ -59,27 +62,10 @@ def ftext(text):
     return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
 
 
-# 📁 انتخاب فونت فارسی
-if platform == "android":
-    FONT_FILE = "fonts/Vazirmatn-Light.ttf"
-    if not os.path.exists(FONT_FILE):
-        FONT_FILE = None
-else:
-    _candidates = [
-        "C:\\Windows\\Fonts\\arial.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-    ]
-    FONT_FILE = next((p for p in _candidates if os.path.exists(p)), None)
-
-if FONT_FILE:
-    try:
-        LabelBase.register(name="PersianFont", fn_regular=FONT_FILE)
-    except Exception as e:
-        print(f"font registration failed: {e}")
-        FONT_FILE = None
-
-_FONT_NAME = "PersianFont" if FONT_FILE else "Roboto"
+# ---------- غیرفعال کردن موقت فونت فارسی ----------
+# برای جلوگیری از کرش ناشی از فونت، از فونت پیش‌فرض استفاده می‌کنیم.
+FONT_FILE = None
+_FONT_NAME = "Roboto"
 
 
 class PersianLabel(Label):
@@ -126,9 +112,14 @@ class ScreenRecorderApp(App):
         layout.add_widget(stop_button)
         layout.add_widget(photo_button)
 
-        if platform == "android" and android_activity is not None:
-            android_activity.bind(on_activity_result=self.on_activity_result)
-            self._request_runtime_permissions()
+        if platform == "android":
+            try:
+                android_activity.bind(on_activity_result=self.on_activity_result)
+            except Exception as e:
+                print(f"bind activity failed: {e}")
+
+            # درخواست مجوزها را موقتاً غیرفعال کردیم تا ببینیم کرش از کجاست
+            # self._request_runtime_permissions()
 
         return layout
 
@@ -167,7 +158,6 @@ class ScreenRecorderApp(App):
     def on_activity_result(self, request_code, result_code, data):
         if request_code not in (REQUEST_RECORD, REQUEST_SCREENSHOT):
             return
-
         if result_code != -1:
             self.status_label.text = ftext("مجوز رد شد")
             self.pending_action = None
