@@ -217,4 +217,32 @@ class ScreenRecorderApp(App):
 
 
 if __name__ == "__main__":
-    ScreenRecorderApp().run()
+    try:
+        ScreenRecorderApp().run()
+    except Exception:
+        import traceback
+        error_msg = traceback.format_exc()
+
+        # ذخیره خطا در فایل (برای بررسی بعدی)
+        try:
+            with open("error_log.txt", "w") as f:
+                f.write(error_msg)
+        except:
+            pass
+
+        # نمایش خطا روی صفحه با Popup
+        try:
+            from kivy.uix.label import Label
+            from kivy.uix.popup import Popup
+
+            popup = Popup(
+                title="خطا",
+                content=Label(text=error_msg),
+                size_hint=(0.9, 0.9)
+            )
+            popup.open()
+        except:
+            pass
+
+        # چاپ در logcat
+        print(error_msg)
