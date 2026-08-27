@@ -27,6 +27,7 @@ PERMISSIONS_XML = """
 """
 
 
+@ToolchainCL.after_apk_build
 def after_apk_build(toolchain: ToolchainCL):
     manifest_file = Path(toolchain._dist.dist_dir) / "src" / "main" / "AndroidManifest.xml"
     manifest = manifest_file.read_text(encoding="utf-8")
