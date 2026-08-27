@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;   // ← اضافه شد
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
@@ -88,8 +89,12 @@ public class ScreenCaptureService extends Service {
             return START_NOT_STICKY;
         }
 
-        // باید قبل از هر کار دیگه‌ای فورگراند بشه، وگرنه روی اندروید 8+ کرش می‌کنه
-        startForeground(NOTIFICATION_ID, buildNotification());
+        // ✅ اصلاح: برای اندروید ۱۰ و بالاتر باید foregroundServiceType مشخص شود
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification());
+        }
 
         int resultCode = intent.getIntExtra("resultCode", 0);
         Intent data = intent.getParcelableExtra("data");
@@ -107,7 +112,6 @@ public class ScreenCaptureService extends Service {
             return START_NOT_STICKY;
         }
 
-        // از اندروید 14 به بعد بدون این کالبک ممکنه سرویس کرش کنه
         mediaProjection.registerCallback(new MediaProjection.Callback() {
             @Override
             public void onStop() {
@@ -130,8 +134,6 @@ public class ScreenCaptureService extends Service {
         String fileName = "record_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".mp4";
         File outFile = new File(outDir, fileName);
 
-        // اول با صدای میکروفون امتحان می‌کنیم؛ اگه مجوز RECORD_AUDIO رد شده باشه
-        // یا میکروفون در دسترس نباشه، بدون کرش کردن سرویس، بدون صدا ادامه می‌دیم
         if (!tryStartRecorder(outFile, true)) {
             Log.w(TAG, "ضبط با صدا ناموفق بود، تلاش بدون صدا...");
             if (!tryStartRecorder(outFile, false)) {
@@ -144,7 +146,6 @@ public class ScreenCaptureService extends Service {
     private boolean tryStartRecorder(File outFile, boolean withAudio) {
         try {
             mediaRecorder = new MediaRecorder();
-            // ترتیب مهمه: منابع باید قبل از setOutputFormat تنظیم بشن
             mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
             if (withAudio) {
                 mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
@@ -305,4 +306,4 @@ public class ScreenCaptureService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-}
+    }
