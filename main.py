@@ -62,7 +62,7 @@ def ftext(text):
     return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
 
 
-# ---------- فعال‌سازی مجدد فونت فارسی با ایمنی ----------
+# ---------- فعال‌سازی فونت فارسی با ایمنی ----------
 FONT_FILE = None
 _FONT_NAME = "Roboto"
 
@@ -78,7 +78,7 @@ if platform == "android":
     else:
         print("font file not found, using Roboto")
 else:
-    # برای محیط‌های غیر اندروید (مثل Colab) فونت پیش‌فرض
+    # در محیط‌های غیر اندروید (مثل Colab) از فونت پیش‌فرض استفاده می‌کنیم
     _FONT_NAME = "Roboto"
 
 
@@ -132,13 +132,13 @@ class ScreenRecorderApp(App):
             except Exception as e:
                 print(f"bind activity failed: {e}")
 
-            # درخواست مجوزها را با تاخیر و داخل try/except فعال می‌کنیم
-            from kivy.clock import Clock
-            Clock.schedule_once(lambda dt: self._request_runtime_permissions(), 1)
+            # درخواست مجوزها غیرفعال است
+            # self._request_runtime_permissions()
 
         return layout
 
     def _request_runtime_permissions(self):
+        # این تابع فعلاً صدا زده نمی‌شود
         try:
             from android.permissions import request_permissions, Permission
             perms = [Permission.FOREGROUND_SERVICE, Permission.RECORD_AUDIO]
