@@ -11,24 +11,34 @@ from kivy.utils import platform
 
 import arabic_reshaper
 
-if platform == "android":
-    from android import activity as android_activity
-    from jnius import autoclass, cast
+# ---------- مقادیر پیش‌فرض برای اندروید ----------
+android_activity = None
+autoclass = None
+cast = None
+PythonActivity = None
+Intent = None
+Context = None
+BuildVersion = None
 
-    PythonActivity = autoclass("org.kivy.android.PythonActivity")
-    Intent = autoclass("android.content.Intent")
-    Context = autoclass("android.content.Context")
-    BuildVersion = autoclass('android.os.Build$VERSION')
+SERVICE_CLASS = "org.example.screenrecorder.ScreenCaptureService"
+ACTION_START = "org.example.screenrecorder.START"
+ACTION_SCREENSHOT = "org.example.screenrecorder.SCREENSHOT"
+ACTION_STOP = "org.example.screenrecorder.STOP"
 
-    SERVICE_CLASS = "org.example.screenrecorder.ScreenCaptureService"
-    ACTION_START = "org.example.screenrecorder.START"
-    ACTION_SCREENSHOT = "org.example.screenrecorder.SCREENSHOT"
-    ACTION_STOP = "org.example.screenrecorder.STOP"
-
-# کدهای درخواست جدا برای ضبط و اسکرین‌شات، چون هر توکن MediaProjection
-# فقط یک‌بار قابل استفاده است
 REQUEST_RECORD = 1001
 REQUEST_SCREENSHOT = 1002
+
+if platform == "android":
+    try:
+        from android import activity as android_activity
+        from jnius import autoclass, cast
+
+        PythonActivity = autoclass("org.kivy.android.PythonActivity")
+        Intent = autoclass("android.content.Intent")
+        Context = autoclass("android.content.Context")
+        BuildVersion = autoclass('android.os.Build$VERSION')
+    except Exception as e:
+        print(f"Android init failed: {e}")
 
 
 def ftext(text):
@@ -49,13 +59,12 @@ def ftext(text):
     return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
 
 
+# 📁 انتخاب فونت فارسی
 if platform == "android":
     FONT_FILE = "fonts/Vazirmatn-Light.ttf"
     if not os.path.exists(FONT_FILE):
         FONT_FILE = None
 else:
-    # مسیر هاردکد ویندوزی قبلی روی لینوکس/مک کرش می‌کرد؛
-    # حالا چند مسیر رایج چک می‌شه و اگه هیچ‌کدوم نبود، فونت پیش‌فرض کیوی استفاده می‌شه
     _candidates = [
         "C:\\Windows\\Fonts\\arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -97,8 +106,7 @@ class PersianButton(Button):
 
 class ScreenRecorderApp(App):
     def build(self):
-        self.pending_action = None  # "record" یا "screenshot"
-
+        self.pending_action = None
         self.status_label = PersianLabel(text="آماده", font_size="16sp")
 
         layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
@@ -118,28 +126,24 @@ class ScreenRecorderApp(App):
         layout.add_widget(stop_button)
         layout.add_widget(photo_button)
 
-        if platform == "android":
+        if platform == "android" and android_activity is not None:
             android_activity.bind(on_activity_result=self.on_activity_result)
             self._request_runtime_permissions()
 
         return layout
 
-    # ---------- مجوزهای زمان اجرا ----------
-
     def _request_runtime_permissions(self):
         try:
             from android.permissions import request_permissions, Permission
             perms = [Permission.FOREGROUND_SERVICE, Permission.RECORD_AUDIO]
-            if BuildVersion.SDK_INT >= 33:
+            if BuildVersion is not None and BuildVersion.SDK_INT >= 33:
                 perms.append(Permission.POST_NOTIFICATIONS)
             request_permissions(perms)
         except Exception as e:
             print(f"permission request failed: {e}")
 
-    # ---------- درخواست مجوز MediaProjection ----------
-
     def _request_capture(self, action, request_code):
-        if platform != "android":
+        if platform != "android" or PythonActivity is None or autoclass is None:
             self.status_label.text = ftext("فقط روی اندروید")
             return
         try:
@@ -164,17 +168,19 @@ class ScreenRecorderApp(App):
         if request_code not in (REQUEST_RECORD, REQUEST_SCREENSHOT):
             return
 
-        if result_code != -1:  # Activity.RESULT_OK == -1
+        if result_code != -1:
             self.status_label.text = ftext("مجوز رد شد")
             self.pending_action = None
             return
 
         action = ACTION_START if request_code == REQUEST_RECORD else ACTION_SCREENSHOT
         self.status_label.text = ftext("مجوز گرفته شد...")
-        # نکته مهم نسخه قبلی: اینجا result_code واقعی پاس داده می‌شه، نه -1 هاردکد
         self._start_service(action, result_code, data)
 
     def _start_service(self, action, result_code, data):
+        if PythonActivity is None or autoclass is None or cast is None:
+            self.status_label.text = ftext("Android init failed")
+            return
         try:
             activity = PythonActivity.mActivity
             service_intent = Intent(activity, autoclass(SERVICE_CLASS))
@@ -182,20 +188,17 @@ class ScreenRecorderApp(App):
             service_intent.putExtra("resultCode", result_code)
             service_intent.putExtra("data", cast('android.os.Parcelable', data))
 
-            if BuildVersion.SDK_INT >= 26:
+            if BuildVersion is not None and BuildVersion.SDK_INT >= 26:
                 activity.startForegroundService(service_intent)
             else:
                 activity.startService(service_intent)
 
-            if action == ACTION_START:
-                self.status_label.text = ftext("در حال ضبط...")
-            else:
-                self.status_label.text = ftext("در حال گرفتن عکس...")
+            self.status_label.text = ftext("در حال ضبط..." if action == ACTION_START else "در حال گرفتن عکس...")
         except Exception as e:
             self.status_label.text = ftext(f"خطا در شروع سرویس: {e}")
 
     def stop_recording(self, instance):
-        if platform != "android":
+        if platform != "android" or PythonActivity is None or Intent is None or autoclass is None:
             return
         try:
             activity = PythonActivity.mActivity
