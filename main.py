@@ -51,6 +51,8 @@ def ftext(text):
 
 if platform == "android":
     FONT_FILE = "fonts/Vazirmatn-Light.ttf"
+    if not os.path.exists(FONT_FILE):
+        FONT_FILE = None
 else:
     # مسیر هاردکد ویندوزی قبلی روی لینوکس/مک کرش می‌کرد؛
     # حالا چند مسیر رایج چک می‌شه و اگه هیچ‌کدوم نبود، فونت پیش‌فرض کیوی استفاده می‌شه
@@ -62,7 +64,11 @@ else:
     FONT_FILE = next((p for p in _candidates if os.path.exists(p)), None)
 
 if FONT_FILE:
-    LabelBase.register(name="PersianFont", fn_regular=FONT_FILE)
+    try:
+        LabelBase.register(name="PersianFont", fn_regular=FONT_FILE)
+    except Exception as e:
+        print(f"font registration failed: {e}")
+        FONT_FILE = None
 
 _FONT_NAME = "PersianFont" if FONT_FILE else "Roboto"
 
