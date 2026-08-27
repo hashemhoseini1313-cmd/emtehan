@@ -65,22 +65,23 @@ jobs:
       run: |
         rm -rf .buildozer ~/.buildozer ~/.cache/p4a ~/.local/share/python-for-android
 
-    # نکته: قبلاً NDK 25b با libffi ناسازگار تشخیص داده شده بود و
-    # تصمیم گرفته شد به 23b برگردیم. اگه این نسخه هم مشکل داد، لاگ کامل رو بفرست.
-    - name: Download and install NDK r23b
+    # نکته: p4a 2024.01.21 فقط NDK 25b رو به‌عنوان نسخه‌ی توصیه‌شده می‌شناسه.
+    # با هر نسخه‌ی دیگه (مثل 23b)، چون CI محیط تعاملی نیست، p4a با خطا قطع می‌شه.
+    # اگه با 25b به مشکل libffi برخوردیم، باید راه‌حل دیگه‌ای غیر از تغییر نسخه NDK پیدا کنیم.
+    - name: Download and install NDK r25b
       run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
-        unzip -q android-ndk-r23b-linux.zip
-        rm android-ndk-r23b-linux.zip
+        wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
+        unzip -q android-ndk-r25b-linux.zip
+        rm android-ndk-r25b-linux.zip
         mkdir -p $HOME/.buildozer/android/platform
-        mv android-ndk-r23b $HOME/.buildozer/android/platform/android-ndk-r23b
+        mv android-ndk-r25b $HOME/.buildozer/android/platform/android-ndk-r25b
 
-    - name: Build with p4a (NDK 23b, API 26)
+    - name: Build with p4a (NDK 25b, API 26)
       env:
         ANDROID_HOME: /home/runner/android-sdk
         ANDROID_SDK_ROOT: /home/runner/android-sdk
-        ANDROID_NDK_HOME: /home/runner/.buildozer/android/platform/android-ndk-r23b
-        ANDROID_NDK_ROOT: /home/runner/.buildozer/android/platform/android-ndk-r23b
+        ANDROID_NDK_HOME: /home/runner/.buildozer/android/platform/android-ndk-r25b
+        ANDROID_NDK_ROOT: /home/runner/.buildozer/android/platform/android-ndk-r25b
       run: |
         export PATH="/opt/hostedtoolcache/Python/3.10.12/x64/bin:$PATH"
         export P4A_NDK_API=26
@@ -95,7 +96,7 @@ jobs:
           --android-api=35 \
           --ndk-api=26 \
           --sdk-dir=/home/runner/android-sdk \
-          --ndk-dir=/home/runner/.buildozer/android/platform/android-ndk-r23b \
+          --ndk-dir=/home/runner/.buildozer/android/platform/android-ndk-r25b \
           --dist-name=screenrecorder \
           --permission INTERNET \
           --permission READ_MEDIA_IMAGES \
