@@ -1,0 +1,116 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10.12'
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Install SDL2 system libraries
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          libsdl2-dev \
+          libsdl2-image-dev \
+          libsdl2-mixer-dev \
+          libsdl2-ttf-dev
+
+    - name: Install dependencies
+      run: |
+        sudo apt update -o Acquire::Retries=3
+        sudo apt install -y --no-install-recommends \
+          build-essential libffi-dev libssl-dev ccache git unzip zip zlib1g-dev openjdk-17-jdk
+
+        python -m pip install --upgrade pip==23.1.2 setuptools
+        pip install Cython==0.29.36
+        pip install python-for-android==2024.01.21
+
+    - name: Install Android SDK and accept licenses
+      run: |
+        mkdir -p $HOME/android-sdk/cmdline-tools
+        cd $HOME/android-sdk/cmdline-tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        unzip -q commandlinetools-linux-11076708_latest.zip
+        mv cmdline-tools latest
+        rm commandlinetools-linux-11076708_latest.zip
+
+        export ANDROID_HOME=$HOME/android-sdk
+        export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+
+        yes | sdkmanager --licenses > /dev/null 2>&1 || true
+        sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+        mkdir -p $HOME/android-sdk/tools/bin
+        ln -sf $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager $HOME/android-sdk/tools/bin/sdkmanager
+        ln -sf $HOME/android-sdk/cmdline-tools/latest/bin/avdmanager $HOME/android-sdk/tools/bin/avdmanager
+
+    - name: Clean build cache (deep)
+      run: |
+        rm -rf .buildozer ~/.buildozer ~/.cache/p4a ~/.local/share/python-for-android
+
+    # نکته: قبلاً NDK 25b با libffi ناسازگار تشخیص داده شده بود و
+    # تصمیم گرفته شد به 23b برگردیم. اگه این نسخه هم مشکل داد، لاگ کامل رو بفرست.
+    - name: Download and install NDK r23b
+      run: |
+        wget -q https://dl.google.com/android/repository/android-ndk-r23b-linux.zip
+        unzip -q android-ndk-r23b-linux.zip
+        rm android-ndk-r23b-linux.zip
+        mkdir -p $HOME/.buildozer/android/platform
+        mv android-ndk-r23b $HOME/.buildozer/android/platform/android-ndk-r23b
+
+    - name: Build with p4a (NDK 23b, API 26)
+      env:
+        ANDROID_HOME: /home/runner/android-sdk
+        ANDROID_SDK_ROOT: /home/runner/android-sdk
+        ANDROID_NDK_HOME: /home/runner/.buildozer/android/platform/android-ndk-r23b
+        ANDROID_NDK_ROOT: /home/runner/.buildozer/android/platform/android-ndk-r23b
+      run: |
+        export PATH="/opt/hostedtoolcache/Python/3.10.12/x64/bin:$PATH"
+        export P4A_NDK_API=26
+        p4a apk \
+          --private . \
+          --package=org.example.screenrecorder \
+          --name "Screen Recorder" \
+          --version 1.0 \
+          --bootstrap=sdl2 \
+          --requirements=python3==3.10.12,hostpython3==3.10.12,kivy==2.1.0,arabic_reshaper,python-bidi,pyjnius,android \
+          --arch=arm64-v8a \
+          --android-api=35 \
+          --ndk-api=26 \
+          --sdk-dir=/home/runner/android-sdk \
+          --ndk-dir=/home/runner/.buildozer/android/platform/android-ndk-r23b \
+          --dist-name=screenrecorder \
+          --permission INTERNET \
+          --permission READ_MEDIA_IMAGES \
+          --permission READ_MEDIA_VIDEO \
+          --add-source=src \
+          --hook=p4a_hooks.py
+
+    - name: Prepare APK
+      run: |
+        mkdir -p bin
+        find . -type f -name "*.apk" -not -path "./bin/*" -exec cp {} bin/ \;
+        ls -lah bin
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: package
+        path: bin/*.apk
