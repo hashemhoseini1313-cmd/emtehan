@@ -1,8 +1,5 @@
 from pathlib import Path
-from pythonforandroid.toolchain import ToolchainCL
 
-# اندروید 14+ بدون این تگ توی منیفست، سرویس رو موقع startForeground کرش می‌ده.
-# چون از p4a مستقیم استفاده می‌کنیم (نه buildozer)، این تگ رو با یه hook تزریق می‌کنیم.
 SERVICE_XML = """
     <service
         android:name="org.example.screenrecorder.ScreenCaptureService"
@@ -11,10 +8,6 @@ SERVICE_XML = """
         android:foregroundServiceType="mediaProjection" />
 """
 
-# مجوزهایی که نیاز به maxSdkVersion دارن رو نمیشه با فلگ --permission ساخت،
-# پس اینجا تزریق می‌شن تا یه منبع واحد و هماهنگ با main.py و ScreenCaptureService.java باشن.
-# بقیه مجوزهای ساده (INTERNET, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO) همچنان از
-# فلگ‌های --permission توی ورک‌فلو میان، پس اینجا تکرار نمی‌شن.
 PERMISSIONS_XML = """
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
@@ -27,8 +20,7 @@ PERMISSIONS_XML = """
 """
 
 
-@ToolchainCL.after_apk_build
-def after_apk_build(toolchain: ToolchainCL):
+def after_apk_build(toolchain):
     manifest_file = Path(toolchain._dist.dist_dir) / "src" / "main" / "AndroidManifest.xml"
     manifest = manifest_file.read_text(encoding="utf-8")
 
