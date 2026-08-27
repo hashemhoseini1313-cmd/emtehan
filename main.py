@@ -49,7 +49,6 @@ def ftext(text):
         reshaped_text = arabic_reshaper.reshape(text)
     except Exception:
         reshaped_text = text
-    # تعویض پرانتزها و معکوس‌سازی ساده
     swapped = []
     for char in reshaped_text:
         if char == '(':
@@ -63,7 +62,7 @@ def ftext(text):
     return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
 
 
-# ---------- فعال‌سازی فونت فارسی با ایمنی ----------
+# ---------- فونت فارسی ----------
 FONT_FILE = None
 _FONT_NAME = "Roboto"
 
@@ -207,13 +206,11 @@ if __name__ == "__main__":
         ScreenRecorderApp().run()
     except Exception:
         error_msg = traceback.format_exc()
-        # ذخیره در فایل شخصی برنامه
         try:
             with open("error_log.txt", "w") as f:
                 f.write(error_msg)
         except:
             pass
-        # نمایش روی صفحه (اگر ممکن بود)
         try:
             from kivy.uix.label import Label as L
             from kivy.uix.popup import Popup
@@ -221,5 +218,4 @@ if __name__ == "__main__":
             popup.open()
         except:
             pass
-        # چاپ در logcat
         print(error_msg)
