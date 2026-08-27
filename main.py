@@ -75,6 +75,7 @@ if platform == "android":
             _FONT_NAME = "PersianFont"
         except Exception as e:
             print(f"font registration failed: {e}")
+            _FONT_NAME = "Roboto"   # ✅ این خط اضافه شد
     else:
         print("font file not found, using Roboto")
 else:
