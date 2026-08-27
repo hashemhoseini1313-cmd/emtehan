@@ -102,7 +102,7 @@ jobs:
           --permission READ_MEDIA_IMAGES \
           --permission READ_MEDIA_VIDEO \
           --add-source=src \
-          --hook=p4a_hooks.py
+          --hook="$(pwd)/p4a_hooks.py"
 
     - name: Prepare APK
       run: |
