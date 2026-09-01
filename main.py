@@ -71,10 +71,16 @@ try:
         if os.path.exists(candidate):
             try:
                 LabelBase.register(name="PersianFont", fn_regular=candidate)
+                # صرف register شدن کافی نیست؛ Kivy فونت رو lazy لود می‌کنه و اگه خراب باشه
+                # خطا موقع رندر واقعی (توی حلقه‌ی گرافیکی) میاد که دیگه try/except بیرونی نمی‌گیرتش.
+                # پس همینجا یه رندر تستی اجباری می‌کنیم تا خرابی فونت همین‌جا مشخص بشه.
+                from kivy.core.text import Label as _CoreLabel
+                _test = _CoreLabel(text="ت", font_name="PersianFont")
+                _test.refresh()
                 FONT_FILE = candidate
                 _FONT_NAME = "PersianFont"
             except Exception as e:
-                print(f"font registration failed: {e}")
+                print(f"font registration/load failed: {e}")
                 _FONT_NAME = "Roboto"
         else:
             print("font file not found, using Roboto")
