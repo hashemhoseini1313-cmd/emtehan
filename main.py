@@ -4,6 +4,7 @@ import traceback
 
 try:
     import os
+    import re
     from kivy.app import App
     from kivy.uix.boxlayout import BoxLayout
     from kivy.uix.label import Label
@@ -24,21 +25,21 @@ try:
                 print(f"font registration failed: {e}")
                 _FONT_NAME = "Roboto"
 
-    def reshape_and_reverse(text):
+    def ftext_number_only(text):
         try:
             reshaped_text = arabic_reshaper.reshape(text)
-        except Exception as e:
-            print(f"reshape failed: {e}")
+        except Exception:
             reshaped_text = text
-        return reshaped_text[::-1]
+        reversed_text = reshaped_text[::-1]
+        return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
 
     class ScreenRecorderApp(App):
         def build(self):
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
-            title = Label(text=reshape_and_reverse("سلام"), font_name=_FONT_NAME, font_size="24sp")
-            btn1 = Label(text=reshape_and_reverse("شروع"), font_name=_FONT_NAME, font_size="18sp")
-            btn2 = Label(text=reshape_and_reverse("توقف"), font_name=_FONT_NAME, font_size="18sp")
-            btn3 = Label(text=reshape_and_reverse("عکس"), font_name=_FONT_NAME, font_size="18sp")
+            title = Label(text=ftext_number_only("اندروید 15"), font_name=_FONT_NAME, font_size="24sp")
+            btn1 = Label(text=ftext_number_only("شروع"), font_name=_FONT_NAME, font_size="18sp")
+            btn2 = Label(text=ftext_number_only("توقف"), font_name=_FONT_NAME, font_size="18sp")
+            btn3 = Label(text=ftext_number_only("عکس"), font_name=_FONT_NAME, font_size="18sp")
             layout.add_widget(title)
             layout.add_widget(btn1)
             layout.add_widget(btn2)
