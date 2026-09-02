@@ -10,6 +10,8 @@ try:
     from kivy.core.text import LabelBase
     from kivy.utils import platform
 
+    import arabic_reshaper
+
     _FONT_NAME = "Roboto"
 
     if platform == "android":
@@ -22,13 +24,20 @@ try:
                 print(f"font registration failed: {e}")
                 _FONT_NAME = "Roboto"
 
+    def reshape_only(text):
+        try:
+            return arabic_reshaper.reshape(text)
+        except Exception as e:
+            print(f"reshape failed: {e}")
+            return text
+
     class ScreenRecorderApp(App):
         def build(self):
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
-            title = Label(text="سلام", font_name=_FONT_NAME, font_size="24sp")
-            btn1 = Label(text="شروع", font_name=_FONT_NAME, font_size="18sp")
-            btn2 = Label(text="توقف", font_name=_FONT_NAME, font_size="18sp")
-            btn3 = Label(text="عکس", font_name=_FONT_NAME, font_size="18sp")
+            title = Label(text=reshape_only("سلام"), font_name=_FONT_NAME, font_size="24sp")
+            btn1 = Label(text=reshape_only("شروع"), font_name=_FONT_NAME, font_size="18sp")
+            btn2 = Label(text=reshape_only("توقف"), font_name=_FONT_NAME, font_size="18sp")
+            btn3 = Label(text=reshape_only("عکس"), font_name=_FONT_NAME, font_size="18sp")
             layout.add_widget(title)
             layout.add_widget(btn1)
             layout.add_widget(btn2)
