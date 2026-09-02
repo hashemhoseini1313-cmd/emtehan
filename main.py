@@ -4,6 +4,8 @@ import traceback
 
 try:
     import os
+    os.environ['KIVY_TEXT'] = 'pil'
+
     import re
     from kivy.app import App
     from kivy.uix.boxlayout import BoxLayout
