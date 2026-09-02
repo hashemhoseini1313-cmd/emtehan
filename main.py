@@ -24,20 +24,21 @@ try:
                 print(f"font registration failed: {e}")
                 _FONT_NAME = "Roboto"
 
-    def reshape_only(text):
+    def reshape_and_reverse(text):
         try:
-            return arabic_reshaper.reshape(text)
+            reshaped_text = arabic_reshaper.reshape(text)
         except Exception as e:
             print(f"reshape failed: {e}")
-            return text
+            reshaped_text = text
+        return reshaped_text[::-1]
 
     class ScreenRecorderApp(App):
         def build(self):
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
-            title = Label(text=reshape_only("سلام"), font_name=_FONT_NAME, font_size="24sp")
-            btn1 = Label(text=reshape_only("شروع"), font_name=_FONT_NAME, font_size="18sp")
-            btn2 = Label(text=reshape_only("توقف"), font_name=_FONT_NAME, font_size="18sp")
-            btn3 = Label(text=reshape_only("عکس"), font_name=_FONT_NAME, font_size="18sp")
+            title = Label(text=reshape_and_reverse("سلام"), font_name=_FONT_NAME, font_size="24sp")
+            btn1 = Label(text=reshape_and_reverse("شروع"), font_name=_FONT_NAME, font_size="18sp")
+            btn2 = Label(text=reshape_and_reverse("توقف"), font_name=_FONT_NAME, font_size="18sp")
+            btn3 = Label(text=reshape_and_reverse("عکس"), font_name=_FONT_NAME, font_size="18sp")
             layout.add_widget(title)
             layout.add_widget(btn1)
             layout.add_widget(btn2)
