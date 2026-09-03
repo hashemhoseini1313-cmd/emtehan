@@ -15,6 +15,7 @@ try:
     import arabic_reshaper
 
     # ---------- متغیرهای اندروید ----------
+    android_activity = None
     autoclass = None
     cast = None
     PythonActivity = None
@@ -24,6 +25,7 @@ try:
 
     if platform == "android":
         try:
+            from android import activity as android_activity
             from jnius import autoclass, cast
 
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
@@ -101,6 +103,12 @@ try:
             layout.add_widget(start_button)
             layout.add_widget(stop_button)
             layout.add_widget(photo_button)
+
+            if platform == "android":
+                try:
+                    android_activity.bind(on_activity_result=lambda *args: print("activity result:", args))
+                except Exception as e:
+                    print(f"bind activity failed: {e}")
 
             return layout
 
