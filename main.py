@@ -14,6 +14,25 @@ try:
 
     import arabic_reshaper
 
+    # ---------- متغیرهای اندروید ----------
+    autoclass = None
+    cast = None
+    PythonActivity = None
+    Intent = None
+    Context = None
+    BuildVersion = None
+
+    if platform == "android":
+        try:
+            from jnius import autoclass, cast
+
+            PythonActivity = autoclass("org.kivy.android.PythonActivity")
+            Intent = autoclass("android.content.Intent")
+            Context = autoclass("android.content.Context")
+            BuildVersion = autoclass('android.os.Build$VERSION')
+        except Exception as e:
+            print(f"Android init failed: {e}")
+
     _FONT_NAME = "Roboto"
 
     if platform == "android":
