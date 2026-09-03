@@ -110,7 +110,19 @@ try:
                 except Exception as e:
                     print(f"bind activity failed: {e}")
 
+                self._request_runtime_permissions()
+
             return layout
+
+        def _request_runtime_permissions(self):
+            try:
+                from android.permissions import request_permissions, Permission
+                perms = [Permission.FOREGROUND_SERVICE, Permission.RECORD_AUDIO]
+                if BuildVersion is not None and BuildVersion.SDK_INT >= 33:
+                    perms.append(Permission.POST_NOTIFICATIONS)
+                request_permissions(perms)
+            except Exception as e:
+                print(f"permission request failed: {e}")
 
     if __name__ == "__main__":
         ScreenRecorderApp().run()
