@@ -23,6 +23,14 @@ try:
     Context = None
     BuildVersion = None
 
+    SERVICE_CLASS = "org.example.screenrecorder.ScreenCaptureService"
+    ACTION_START = "org.example.screenrecorder.START"
+    ACTION_SCREENSHOT = "org.example.screenrecorder.SCREENSHOT"
+    ACTION_STOP = "org.example.screenrecorder.STOP"
+
+    REQUEST_RECORD = 1001
+    REQUEST_SCREENSHOT = 1002
+
     if platform == "android":
         try:
             from android import activity as android_activity
@@ -34,18 +42,6 @@ try:
             BuildVersion = autoclass('android.os.Build$VERSION')
         except Exception as e:
             print(f"Android init failed: {e}")
-
-    _FONT_NAME = "Roboto"
-
-    if platform == "android":
-        candidate = "fonts/Vazirmatn-Light.ttf"
-        if os.path.exists(candidate):
-            try:
-                LabelBase.register(name="PersianFont", fn_regular=candidate)
-                _FONT_NAME = "PersianFont"
-            except Exception as e:
-                print(f"font registration failed: {e}")
-                _FONT_NAME = "Roboto"
 
     def ftext(text):
         if not text:
@@ -65,6 +61,28 @@ try:
         temp_text = "".join(swapped)
         reversed_text = temp_text[::-1]
         return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
+
+    # ---------- فونت فارسی ----------
+    FONT_FILE = None
+    _FONT_NAME = "Roboto"
+
+    if platform == "android":
+        candidate = "fonts/Vazirmatn-Light.ttf"
+        if os.path.exists(candidate):
+            try:
+                LabelBase.register(name="PersianFont", fn_regular=candidate)
+                from kivy.core.text import Label as _CoreLabel
+                _test = _CoreLabel(text="ت", font_name="PersianFont")
+                _test.refresh()
+                FONT_FILE = candidate
+                _FONT_NAME = "PersianFont"
+            except Exception as e:
+                print(f"font registration/load failed: {e}")
+                _FONT_NAME = "Roboto"
+        else:
+            print("font file not found, using Roboto")
+    else:
+        _FONT_NAME = "Roboto"
 
     class PersianLabel(Label):
         def __init__(self, **kwargs):
@@ -88,6 +106,9 @@ try:
 
     class ScreenRecorderApp(App):
         def build(self):
+            self.pending_action = None
+            self.status_label = PersianLabel(text="آماده", font_size="16sp")
+
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
 
             title = PersianLabel(text="ضبط صفحه گوشی (اندروید 15)", font_size="24sp")
@@ -95,18 +116,19 @@ try:
             stop_button = PersianButton(text="توقف ضبط", font_size="18sp", size_hint_y=None, height=65)
             photo_button = PersianButton(text="عکس از صفحه", font_size="18sp", size_hint_y=None, height=65)
 
-            start_button.bind(on_press=lambda instance: print("start pressed"))
-            stop_button.bind(on_press=lambda instance: print("stop pressed"))
-            photo_button.bind(on_press=lambda instance: print("photo pressed"))
+            start_button.bind(on_press=self.start_recording)
+            stop_button.bind(on_press=self.stop_recording)
+            photo_button.bind(on_press=self.take_screenshot)
 
             layout.add_widget(title)
+            layout.add_widget(self.status_label)
             layout.add_widget(start_button)
             layout.add_widget(stop_button)
             layout.add_widget(photo_button)
 
             if platform == "android":
                 try:
-                    android_activity.bind(on_activity_result=lambda *args: print("activity result:", args))
+                    android_activity.bind(on_activity_result=self.on_activity_result)
                 except Exception as e:
                     print(f"bind activity failed: {e}")
 
@@ -114,6 +136,7 @@ try:
 
             return layout
 
+        # ---------- مجوزهای زمان اجرا ----------
         def _request_runtime_permissions(self):
             try:
                 from android.permissions import request_permissions, Permission
@@ -124,6 +147,73 @@ try:
             except Exception as e:
                 print(f"permission request failed: {e}")
 
+        # ---------- درخواست مجوز MediaProjection ----------
+        def _request_capture(self, action, request_code):
+            if platform != "android" or PythonActivity is None or autoclass is None:
+                self.status_label.text = ftext("فقط روی اندروید")
+                return
+            try:
+                self.pending_action = action
+                activity = PythonActivity.mActivity
+                MediaProjectionManager = autoclass("android.media.projection.MediaProjectionManager")
+                projection_service = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                mgr = cast(MediaProjectionManager, projection_service)
+                intent = mgr.createScreenCaptureIntent()
+                activity.startActivityForResult(intent, request_code)
+                self.status_label.text = ftext("منتظر تأیید مجوز...")
+            except Exception as e:
+                self.status_label.text = ftext(f"خطا در درخواست مجوز: {e}")
+
+        def start_recording(self, instance):
+            self._request_capture("record", REQUEST_RECORD)
+
+        def take_screenshot(self, instance):
+            self._request_capture("screenshot", REQUEST_SCREENSHOT)
+
+        def on_activity_result(self, request_code, result_code, data):
+            if request_code not in (REQUEST_RECORD, REQUEST_SCREENSHOT):
+                return
+            if result_code != -1:
+                self.status_label.text = ftext("مجوز رد شد")
+                self.pending_action = None
+                return
+
+            action = ACTION_START if request_code == REQUEST_RECORD else ACTION_SCREENSHOT
+            self.status_label.text = ftext("مجوز گرفته شد...")
+            self._start_service(action, result_code, data)
+
+        def _start_service(self, action, result_code, data):
+            if PythonActivity is None or autoclass is None or cast is None:
+                self.status_label.text = ftext("Android init failed")
+                return
+            try:
+                activity = PythonActivity.mActivity
+                service_intent = Intent(activity, autoclass(SERVICE_CLASS))
+                service_intent.setAction(action)
+                service_intent.putExtra("resultCode", result_code)
+                service_intent.putExtra("data", cast('android.os.Parcelable', data))
+
+                if BuildVersion is not None and BuildVersion.SDK_INT >= 26:
+                    activity.startForegroundService(service_intent)
+                else:
+                    activity.startService(service_intent)
+
+                self.status_label.text = ftext("در حال ضبط..." if action == ACTION_START else "در حال گرفتن عکس...")
+            except Exception as e:
+                self.status_label.text = ftext(f"خطا در شروع سرویس: {e}")
+
+        def stop_recording(self, instance):
+            if platform != "android" or PythonActivity is None or Intent is None or autoclass is None:
+                return
+            try:
+                activity = PythonActivity.mActivity
+                service_intent = Intent(activity, autoclass(SERVICE_CLASS))
+                service_intent.setAction(ACTION_STOP)
+                activity.startService(service_intent)
+                self.status_label.text = ftext("ضبط متوقف شد")
+            except Exception as e:
+                self.status_label.text = ftext(f"خطا در توقف سرویس: {e}")
+
     if __name__ == "__main__":
         ScreenRecorderApp().run()
 
@@ -132,6 +222,14 @@ except Exception:
     try:
         with open("error_log.txt", "w") as f:
             f.write(error_msg)
+    except:
+        pass
+    try:
+        from jnius import autoclass
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        Toast = autoclass('android.widget.Toast')
+        activity = PythonActivity.mActivity
+        Toast.makeText(activity, "Error:\n" + error_msg[:200], Toast.LENGTH_LONG).show()
     except:
         pass
     print(error_msg)
