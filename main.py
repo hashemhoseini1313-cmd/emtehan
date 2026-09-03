@@ -7,6 +7,7 @@ try:
     import re
     from kivy.app import App
     from kivy.uix.boxlayout import BoxLayout
+    from kivy.uix.button import Button
     from kivy.uix.label import Label
     from kivy.core.text import LabelBase
     from kivy.utils import platform
@@ -47,14 +48,22 @@ try:
     class ScreenRecorderApp(App):
         def build(self):
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
+
             title = Label(text=ftext("ضبط صفحه گوشی (اندروید 15)"), font_name=_FONT_NAME, font_size="24sp")
-            btn1 = Label(text=ftext("شروع ضبط صفحه"), font_name=_FONT_NAME, font_size="18sp")
-            btn2 = Label(text=ftext("توقف ضبط"), font_name=_FONT_NAME, font_size="18sp")
-            btn3 = Label(text=ftext("عکس از صفحه"), font_name=_FONT_NAME, font_size="18sp")
+
+            start_button = Button(text=ftext("شروع ضبط صفحه"), font_name=_FONT_NAME, font_size="18sp", size_hint_y=None, height=65)
+            stop_button = Button(text=ftext("توقف ضبط"), font_name=_FONT_NAME, font_size="18sp", size_hint_y=None, height=65)
+            photo_button = Button(text=ftext("عکس از صفحه"), font_name=_FONT_NAME, font_size="18sp", size_hint_y=None, height=65)
+
+            start_button.bind(on_press=lambda instance: print("start pressed"))
+            stop_button.bind(on_press=lambda instance: print("stop pressed"))
+            photo_button.bind(on_press=lambda instance: print("photo pressed"))
+
             layout.add_widget(title)
-            layout.add_widget(btn1)
-            layout.add_widget(btn2)
-            layout.add_widget(btn3)
+            layout.add_widget(start_button)
+            layout.add_widget(stop_button)
+            layout.add_widget(photo_button)
+
             return layout
 
     if __name__ == "__main__":
