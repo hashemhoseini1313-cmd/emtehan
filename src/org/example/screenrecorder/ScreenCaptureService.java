@@ -4,9 +4,11 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.ServiceInfo;   // ← اضافه شد
+import android.content.pm.ServiceInfo;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
@@ -14,19 +16,24 @@ import android.hardware.display.VirtualDisplay;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
+import android.media.MediaScannerConnection;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.provider.MediaStore;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -55,6 +62,9 @@ public class ScreenCaptureService extends Service {
     private Handler workerHandler;
 
     private int screenWidth, screenHeight, screenDensity;
+
+    // فایل موقت داخلی که ابتدا ضبط در آن انجام می‌شود، سپس به گالری منتقل می‌شود
+    private File tempRecordingFile;
 
     @Override
     public void onCreate() {
@@ -89,7 +99,6 @@ public class ScreenCaptureService extends Service {
             return START_NOT_STICKY;
         }
 
-        // ✅ اصلاح: برای اندروید ۱۰ و بالاتر باید foregroundServiceType مشخص شود
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         } else {
@@ -129,14 +138,15 @@ public class ScreenCaptureService extends Service {
     }
 
     private void startRecording() {
-        File outDir = getExternalFilesDir(Environment.DIRECTORY_MOVIES);
-        if (outDir != null && !outDir.exists()) outDir.mkdirs();
+        // ضبط ابتدا در یک فایل موقت داخل حافظه‌ی خصوصی اپ انجام می‌شود
+        // (چون MediaRecorder برای نوشتن مستقیم روی MediaStore به مسیر فایل نیاز دارد)
+        File tempDir = getCacheDir();
         String fileName = "record_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".mp4";
-        File outFile = new File(outDir, fileName);
+        tempRecordingFile = new File(tempDir, fileName);
 
-        if (!tryStartRecorder(outFile, true)) {
+        if (!tryStartRecorder(tempRecordingFile, true)) {
             Log.w(TAG, "ضبط با صدا ناموفق بود، تلاش بدون صدا...");
-            if (!tryStartRecorder(outFile, false)) {
+            if (!tryStartRecorder(tempRecordingFile, false)) {
                 Log.e(TAG, "ضبط حتی بدون صدا هم شکست خورد");
                 stopSelf();
             }
@@ -202,7 +212,7 @@ public class ScreenCaptureService extends Service {
             try {
                 image = reader.acquireLatestImage();
                 if (image != null) {
-                    saveImage(image);
+                    saveImageToGallery(image);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "خطا در گرفتن عکس", e);
@@ -214,7 +224,7 @@ public class ScreenCaptureService extends Service {
         }, workerHandler);
     }
 
-    private void saveImage(Image image) throws Exception {
+    private void saveImageToGallery(Image image) throws Exception {
         Image.Plane plane = image.getPlanes()[0];
         ByteBuffer buffer = plane.getBuffer();
         int pixelStride = plane.getPixelStride();
@@ -226,15 +236,39 @@ public class ScreenCaptureService extends Service {
         bitmap.copyPixelsFromBuffer(buffer);
         bitmap = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight);
 
-        File outDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-        if (outDir != null && !outDir.exists()) outDir.mkdirs();
         String fileName = "screenshot_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".png";
-        File outFile = new File(outDir, fileName);
 
-        try (FileOutputStream fos = new FileOutputStream(outFile)) {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+        ContentResolver resolver = getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+
+        Uri collection;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ScreenRecorder");
+            values.put(MediaStore.Images.Media.IS_PENDING, 1);
+            collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        } else {
+            collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
         }
-        Log.i(TAG, "عکس ذخیره شد: " + outFile.getAbsolutePath());
+
+        Uri itemUri = resolver.insert(collection, values);
+        if (itemUri == null) {
+            Log.e(TAG, "ساخت مدخل MediaStore برای عکس شکست خورد");
+            return;
+        }
+
+        try (OutputStream out = resolver.openOutputStream(itemUri)) {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            values.clear();
+            values.put(MediaStore.Images.Media.IS_PENDING, 0);
+            resolver.update(itemUri, values, null, null);
+        }
+
+        Log.i(TAG, "عکس در گالری ذخیره شد: " + itemUri);
     }
 
     private void cleanupScreenshot() {
@@ -249,16 +283,19 @@ public class ScreenCaptureService extends Service {
     }
 
     private void stopRecording() {
+        boolean recorderStoppedOk = false;
         try {
             if (mediaRecorder != null) {
                 mediaRecorder.stop();
                 mediaRecorder.reset();
                 mediaRecorder.release();
                 mediaRecorder = null;
+                recorderStoppedOk = true;
             }
         } catch (Exception e) {
             Log.e(TAG, "خطا در توقف ضبط", e);
         }
+
         if (recordingDisplay != null) {
             recordingDisplay.release();
             recordingDisplay = null;
@@ -266,6 +303,58 @@ public class ScreenCaptureService extends Service {
         if (mediaProjection != null) {
             mediaProjection.stop();
             mediaProjection = null;
+        }
+
+        // انتقال فایل موقت به گالری عمومی از طریق MediaStore
+        if (recorderStoppedOk && tempRecordingFile != null && tempRecordingFile.exists()) {
+            moveVideoToGallery(tempRecordingFile);
+            tempRecordingFile = null;
+        }
+    }
+
+    private void moveVideoToGallery(File srcFile) {
+        try {
+            ContentResolver resolver = getContentResolver();
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Video.Media.DISPLAY_NAME, srcFile.getName());
+            values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+
+            Uri collection;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ScreenRecorder");
+                values.put(MediaStore.Video.Media.IS_PENDING, 1);
+                collection = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+            } else {
+                collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+            }
+
+            Uri itemUri = resolver.insert(collection, values);
+            if (itemUri == null) {
+                Log.e(TAG, "ساخت مدخل MediaStore برای ویدیو شکست خورد");
+                return;
+            }
+
+            try (FileInputStream in = new FileInputStream(srcFile);
+                 OutputStream out = resolver.openOutputStream(itemUri)) {
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = in.read(buf)) > 0) {
+                    out.write(buf, 0, len);
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear();
+                values.put(MediaStore.Video.Media.IS_PENDING, 0);
+                resolver.update(itemUri, values, null, null);
+            }
+
+            //noinspection ResultOfMethodCallIgnored
+            srcFile.delete();
+
+            Log.i(TAG, "ویدیو در گالری ذخیره شد: " + itemUri);
+        } catch (Exception e) {
+            Log.e(TAG, "خطا در انتقال ویدیو به گالری", e);
         }
     }
 
