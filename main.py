@@ -45,15 +45,34 @@ try:
         reversed_text = temp_text[::-1]
         return re.sub(r'\d+', lambda m: m.group(0)[::-1], reversed_text)
 
+    class PersianLabel(Label):
+        def __init__(self, **kwargs):
+            if "text" in kwargs:
+                kwargs["text"] = ftext(kwargs["text"])
+            kwargs.setdefault("font_name", _FONT_NAME)
+            kwargs.setdefault("halign", "right")
+            kwargs.setdefault("text_size", (None, None))
+            super().__init__(**kwargs)
+
+        def on_size(self, *args):
+            self.text_size = (self.width, None)
+
+    class PersianButton(Button):
+        def __init__(self, **kwargs):
+            if "text" in kwargs:
+                kwargs["text"] = ftext(kwargs["text"])
+            kwargs.setdefault("font_name", _FONT_NAME)
+            kwargs.setdefault("halign", "center")
+            super().__init__(**kwargs)
+
     class ScreenRecorderApp(App):
         def build(self):
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
 
-            title = Label(text=ftext("ضبط صفحه گوشی (اندروید 15)"), font_name=_FONT_NAME, font_size="24sp")
-
-            start_button = Button(text=ftext("شروع ضبط صفحه"), font_name=_FONT_NAME, font_size="18sp", size_hint_y=None, height=65)
-            stop_button = Button(text=ftext("توقف ضبط"), font_name=_FONT_NAME, font_size="18sp", size_hint_y=None, height=65)
-            photo_button = Button(text=ftext("عکس از صفحه"), font_name=_FONT_NAME, font_size="18sp", size_hint_y=None, height=65)
+            title = PersianLabel(text="ضبط صفحه گوشی (اندروید 15)", font_size="24sp")
+            start_button = PersianButton(text="شروع ضبط صفحه", font_size="18sp", size_hint_y=None, height=65)
+            stop_button = PersianButton(text="توقف ضبط", font_size="18sp", size_hint_y=None, height=65)
+            photo_button = PersianButton(text="عکس از صفحه", font_size="18sp", size_hint_y=None, height=65)
 
             start_button.bind(on_press=lambda instance: print("start pressed"))
             stop_button.bind(on_press=lambda instance: print("stop pressed"))
