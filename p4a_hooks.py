@@ -5,12 +5,13 @@ SERVICE_XML = """
         android:name="org.example.screenrecorder.ScreenCaptureService"
         android:enabled="true"
         android:exported="false"
-        android:foregroundServiceType="mediaProjection" />
+        android:foregroundServiceType="mediaProjection|microphone" />
 """
 
 PERMISSIONS_XML = """
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
