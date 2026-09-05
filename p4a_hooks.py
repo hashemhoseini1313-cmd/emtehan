@@ -15,6 +15,11 @@ SERVICE_XML = """
             android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
             android:value="floating_control_button" />
     </service>
+    <activity
+        android:name="org.example.screenrecorder.CaptureRequestActivity"
+        android:theme="@android:style/Theme.Translucent.NoDisplay"
+        android:excludeFromRecents="true"
+        android:exported="false" />
 """
 
 PERMISSIONS_XML = """
