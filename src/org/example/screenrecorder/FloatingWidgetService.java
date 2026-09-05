@@ -11,7 +11,9 @@ import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -30,6 +32,8 @@ public class FloatingWidgetService extends Service {
     private LinearLayout rootView;
     private LinearLayout menuView;
     private boolean menuOpen = false;
+    private WindowManager.LayoutParams rootParams;
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
     public void onCreate() {
@@ -94,18 +98,18 @@ public class FloatingWidgetService extends Service {
 
         rootView.addView(mainButton);
 
-        final WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+        rootParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 overlayType(),
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT
         );
-        params.gravity = Gravity.TOP | Gravity.START;
-        params.x = 0;
-        params.y = 300;
+        rootParams.gravity = Gravity.TOP | Gravity.START;
+        rootParams.x = 0;
+        rootParams.y = 300;
 
-        windowManager.addView(rootView, params);
+        windowManager.addView(rootView, rootParams);
 
         rootView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
@@ -116,8 +120,8 @@ public class FloatingWidgetService extends Service {
             public boolean onTouch(View v, MotionEvent event) {
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
-                        initialX = params.x;
-                        initialY = params.y;
+                        initialX = rootParams.x;
+                        initialY = rootParams.y;
                         initialTouchX = event.getRawX();
                         initialTouchY = event.getRawY();
                         moved = false;
@@ -126,19 +130,35 @@ public class FloatingWidgetService extends Service {
                         int dx = (int) (event.getRawX() - initialTouchX);
                         int dy = (int) (event.getRawY() - initialTouchY);
                         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
-                        params.x = initialX + dx;
-                        params.y = initialY + dy;
-                        windowManager.updateViewLayout(rootView, params);
+                        rootParams.x = initialX + dx;
+                        rootParams.y = initialY + dy;
+                        windowManager.updateViewLayout(rootView, rootParams);
                         return true;
                     case MotionEvent.ACTION_UP:
                         if (!moved) {
-                            toggleMenu(params);
+                            toggleMenu(rootParams);
                         }
                         return true;
                 }
                 return false;
             }
         });
+    }
+
+    // ---------- اصلاح: نمایش اجباری دکمه‌ی شناور ----------
+    // اندروید هنگام نمایش پاپ‌آپ حساس (مثل مجوز MediaProjection)، به‌طور خودکار
+    // پنجره‌های شناور (Overlay) را مخفی می‌کند تا از حملات tapjacking جلوگیری شود.
+    // روی برخی گوشی‌ها (مثل سامسونگ) این پنجره بعد از بسته‌شدن پاپ‌آپ خودکار
+    // برنمی‌گردد، پس دستی حذف و دوباره اضافه‌اش می‌کنیم تا مطمئن شویم نمایش داده می‌شود.
+    private void refreshOverlay() {
+        try {
+            if (rootView != null && windowManager != null) {
+                windowManager.removeView(rootView);
+                windowManager.addView(rootView, rootParams);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "خطا در بازسازی دکمه شناور", e);
+        }
     }
 
     private void toggleMenu(WindowManager.LayoutParams anchorParams) {
@@ -215,6 +235,9 @@ public class FloatingWidgetService extends Service {
             intent.putExtra(CaptureRequestActivity.EXTRA_ACTION, action);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
             startActivity(intent);
+
+            // بعد از بسته‌شدن پاپ‌آپ مجوز، دکمه‌ی شناور را دستی دوباره نمایش می‌دهیم
+            handler.postDelayed(this::refreshOverlay, 1500);
         } catch (Exception e) {
             Log.e(TAG, "خطا در باز کردن CaptureRequestActivity", e);
         }
@@ -229,6 +252,7 @@ public class FloatingWidgetService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        handler.removeCallbacksAndMessages(null);
         closeMenu();
         if (rootView != null) {
             try {
@@ -242,4 +266,4 @@ public class FloatingWidgetService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-                                        }
+    }
