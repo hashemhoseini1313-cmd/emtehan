@@ -187,8 +187,17 @@ try:
                 activity = PythonActivity.mActivity
                 service_intent = Intent(activity, autoclass(SERVICE_CLASS))
                 service_intent.setAction(action)
-                service_intent.putExtra("resultCode", result_code)
-                service_intent.putExtra("data", cast('android.os.Parcelable', data))
+
+                # ---------- اصلاح: استفاده از Bundle.putInt به‌جای putExtra مستقیم ----------
+                # pyjnius گاهی وقتی result_code به putExtra داده می‌شود، overload مربوط به
+                # short را به‌جای int انتخاب می‌کند، که باعث ClassCastException در سمت جاوا
+                # هنگام خواندن با getIntExtra می‌شود. استفاده از Bundle.putInt این ابهام را
+                # از بین می‌برد و مطمئن می‌کند مقدار واقعاً به‌عنوان int ذخیره شود.
+                Bundle = autoclass('android.os.Bundle')
+                extras = Bundle()
+                extras.putInt("resultCode", result_code)
+                extras.putParcelable("data", cast('android.os.Parcelable', data))
+                service_intent.putExtras(extras)
 
                 if BuildVersion is not None and BuildVersion.SDK_INT >= 26:
                     activity.startForegroundService(service_intent)
