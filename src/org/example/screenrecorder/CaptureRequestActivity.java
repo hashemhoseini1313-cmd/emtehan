@@ -13,10 +13,17 @@ public class CaptureRequestActivity extends Activity {
     private static final int REQUEST_CODE = 5001;
 
     private String pendingAction;
+    private boolean requested = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        if (requested) {
+            finish();
+            return;
+        }
+        requested = true;
 
         pendingAction = getIntent().getStringExtra(EXTRA_ACTION);
 
@@ -50,6 +57,12 @@ public class CaptureRequestActivity extends Activity {
             }
         }
 
+        finish();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
         finish();
     }
 }
