@@ -19,6 +19,7 @@ SERVICE_XML = """
         android:name="org.example.screenrecorder.CaptureRequestActivity"
         android:theme="@android:style/Theme.NoDisplay"
         android:excludeFromRecents="true"
+        android:launchMode="singleInstance"
         android:exported="false" />
 """
 
