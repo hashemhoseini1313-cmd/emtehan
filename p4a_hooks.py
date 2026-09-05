@@ -17,7 +17,7 @@ SERVICE_XML = """
     </service>
     <activity
         android:name="org.example.screenrecorder.CaptureRequestActivity"
-        android:theme="@android:style/Theme.Translucent.NoDisplay"
+        android:theme="@android:style/Theme.NoDisplay"
         android:excludeFromRecents="true"
         android:exported="false" />
 """
