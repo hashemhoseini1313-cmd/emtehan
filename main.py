@@ -24,6 +24,7 @@ try:
     BuildVersion = None
 
     SERVICE_CLASS = "org.example.screenrecorder.ScreenCaptureService"
+    FLOATING_SERVICE_CLASS = "org.example.screenrecorder.FloatingWidgetService"
     ACTION_START = "org.example.screenrecorder.START"
     ACTION_SCREENSHOT = "org.example.screenrecorder.SCREENSHOT"
     ACTION_STOP = "org.example.screenrecorder.STOP"
@@ -112,16 +113,19 @@ try:
             start_button = PersianButton(text="شروع ضبط صفحه", font_size="18sp", size_hint_y=None, height=65)
             stop_button = PersianButton(text="توقف ضبط", font_size="18sp", size_hint_y=None, height=65)
             photo_button = PersianButton(text="عکس از صفحه", font_size="18sp", size_hint_y=None, height=65)
+            floating_button = PersianButton(text="باز کردن دکمه شناور", font_size="18sp", size_hint_y=None, height=65)
 
             start_button.bind(on_press=self.start_recording)
             stop_button.bind(on_press=self.stop_recording)
             photo_button.bind(on_press=self.take_screenshot)
+            floating_button.bind(on_press=self.open_floating_widget)
 
             layout.add_widget(title)
             layout.add_widget(self.status_label)
             layout.add_widget(start_button)
             layout.add_widget(stop_button)
             layout.add_widget(photo_button)
+            layout.add_widget(floating_button)
 
             if platform == "android":
                 try:
@@ -219,6 +223,40 @@ try:
                 self.status_label.text = ftext("ضبط متوقف شد")
             except Exception as e:
                 self.status_label.text = ftext(f"خطا در توقف سرویس: {e}")
+
+        # ---------- باز کردن دکمه شناور ----------
+        def open_floating_widget(self, instance):
+            if platform != "android" or PythonActivity is None or autoclass is None:
+                self.status_label.text = ftext("فقط روی اندروید")
+                return
+            try:
+                Settings = autoclass('android.provider.Settings')
+                activity = PythonActivity.mActivity
+
+                has_permission = True
+                if BuildVersion is not None and BuildVersion.SDK_INT >= 23:
+                    has_permission = Settings.canDrawOverlays(activity)
+
+                if not has_permission:
+                    Uri = autoclass('android.net.Uri')
+                    package_name = activity.getPackageName()
+                    intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + package_name)
+                    )
+                    activity.startActivity(intent)
+                    self.status_label.text = ftext("لطفاً اجازه نمایش روی برنامه‌های دیگر را فعال کنید")
+                    return
+
+                floating_intent = Intent(activity, autoclass(FLOATING_SERVICE_CLASS))
+                if BuildVersion is not None and BuildVersion.SDK_INT >= 26:
+                    activity.startForegroundService(floating_intent)
+                else:
+                    activity.startService(floating_intent)
+
+                self.status_label.text = ftext("دکمه شناور فعال شد")
+            except Exception as e:
+                self.status_label.text = ftext(f"خطا در باز کردن دکمه شناور: {e}")
 
     if __name__ == "__main__":
         ScreenRecorderApp().run()
