@@ -1,6 +1,5 @@
 package org.example.screenrecorder;
 
-import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -11,7 +10,6 @@ import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
-import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
@@ -22,15 +20,11 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import org.kivy.android.PythonActivity;
-
 public class FloatingWidgetService extends Service {
 
     private static final String TAG = "FloatingWidgetService";
     private static final String CHANNEL_ID = "floating_widget_channel";
     private static final int NOTIFICATION_ID = 2;
-    private static final int REQUEST_RECORD = 1001;
-    private static final int REQUEST_SCREENSHOT = 1002;
 
     private WindowManager windowManager;
     private LinearLayout rootView;
@@ -164,8 +158,8 @@ public class FloatingWidgetService extends Service {
         menuView.setBackground(bg);
         menuView.setPadding(16, 16, 16, 16);
 
-        addMenuItem(menuView, "\uD83D\uDCF8  عکس از صفحه", this::requestScreenshot);
-        addMenuItem(menuView, "\u23FA  شروع ضبط", this::requestRecording);
+        addMenuItem(menuView, "\uD83D\uDCF8  عکس از صفحه", () -> requestCapture(ScreenCaptureService.ACTION_SCREENSHOT));
+        addMenuItem(menuView, "\u23FA  شروع ضبط", () -> requestCapture(ScreenCaptureService.ACTION_START));
         addMenuItem(menuView, "\u23F9  توقف ضبط", this::stopRecordingDirect);
         addMenuItem(menuView, "\u2715  بستن دکمه شناور", () -> {
             closeMenu();
@@ -215,27 +209,14 @@ public class FloatingWidgetService extends Service {
         parent.addView(item);
     }
 
-    private void requestRecording() {
-        requestCapture(REQUEST_RECORD);
-    }
-
-    private void requestScreenshot() {
-        requestCapture(REQUEST_SCREENSHOT);
-    }
-
-    private void requestCapture(int requestCode) {
+    private void requestCapture(String action) {
         try {
-            Activity activity = PythonActivity.mActivity;
-            if (activity == null) {
-                Log.e(TAG, "PythonActivity در دسترس نیست");
-                return;
-            }
-            MediaProjectionManager mgr = (MediaProjectionManager)
-                    activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-            Intent intent = mgr.createScreenCaptureIntent();
-            activity.startActivityForResult(intent, requestCode);
+            Intent intent = new Intent(this, CaptureRequestActivity.class);
+            intent.putExtra(CaptureRequestActivity.EXTRA_ACTION, action);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            startActivity(intent);
         } catch (Exception e) {
-            Log.e(TAG, "خطا در درخواست مجوز از دکمه شناور", e);
+            Log.e(TAG, "خطا در باز کردن CaptureRequestActivity", e);
         }
     }
 
@@ -261,4 +242,4 @@ public class FloatingWidgetService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-          }
+                                        }
