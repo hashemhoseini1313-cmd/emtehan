@@ -16,6 +16,7 @@ import android.hardware.display.VirtualDisplay;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaRecorder;
+import android.media.MediaScannerConnection;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
@@ -31,6 +32,7 @@ import android.view.WindowManager;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
@@ -61,8 +63,8 @@ public class ScreenCaptureService extends Service {
 
     private int screenWidth, screenHeight, screenDensity;
 
+    // فایل موقت داخلی که ابتدا ضبط در آن انجام می‌شود، سپس به گالری منتقل می‌شود
     private File tempRecordingFile;
-    private boolean isRecording = false;
 
     @Override
     public void onCreate() {
@@ -76,12 +78,10 @@ public class ScreenCaptureService extends Service {
 
         DisplayMetrics metrics = new DisplayMetrics();
         WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
-        if (wm != null) {
-            wm.getDefaultDisplay().getRealMetrics(metrics);
-            screenWidth = metrics.widthPixels;
-            screenHeight = metrics.heightPixels;
-            screenDensity = metrics.densityDpi;
-        }
+        wm.getDefaultDisplay().getRealMetrics(metrics);
+        screenWidth = metrics.widthPixels;
+        screenHeight = metrics.heightPixels;
+        screenDensity = metrics.densityDpi;
     }
 
     @Override
@@ -109,47 +109,39 @@ public class ScreenCaptureService extends Service {
         int resultCode = intent.getIntExtra("resultCode", 0);
         Intent data = intent.getParcelableExtra("data");
 
-        // اگر MediaProjection از قبل فعال است، مجدداً آن را نگرید
-        if (mediaProjection == null) {
-            if (resultCode == 0 || data == null) {
-                Log.e(TAG, "داده مجوز MediaProjection نامعتبر است");
-                stopSelf();
-                return START_NOT_STICKY;
-            }
-
-            mediaProjection = projectionManager.getMediaProjection(resultCode, data);
-            if (mediaProjection == null) {
-                Log.e(TAG, "دریافت MediaProjection ناموفق بود");
-                stopSelf();
-                return START_NOT_STICKY;
-            }
-
-            mediaProjection.registerCallback(new MediaProjection.Callback() {
-                @Override
-                public void onStop() {
-                    stopRecording();
-                    cleanupScreenshot();
-                    mediaProjection = null;
-                }
-            }, workerHandler);
+        if (resultCode == 0 || data == null) {
+            Log.e(TAG, "داده مجوز MediaProjection نامعتبر است");
+            stopSelf();
+            return START_NOT_STICKY;
         }
 
-        if (ACTION_START.equals(action) && !isRecording) {
+        mediaProjection = projectionManager.getMediaProjection(resultCode, data);
+        if (mediaProjection == null) {
+            Log.e(TAG, "دریافت MediaProjection ناموفق بود");
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        mediaProjection.registerCallback(new MediaProjection.Callback() {
+            @Override
+            public void onStop() {
+                stopRecording();
+            }
+        }, workerHandler);
+
+        if (ACTION_START.equals(action)) {
             startRecording();
         } else if (ACTION_SCREENSHOT.equals(action)) {
-            // تاخیر کوتاه جهت استیبل شدن صفحه قبل از گرفتن اسکرین‌شات
-            workerHandler.postDelayed(this::takeScreenshot, 300);
+            takeScreenshot();
         }
 
         return START_NOT_STICKY;
     }
 
     private void startRecording() {
+        // ضبط ابتدا در یک فایل موقت داخل حافظه‌ی خصوصی اپ انجام می‌شود
+        // (چون MediaRecorder برای نوشتن مستقیم روی MediaStore به مسیر فایل نیاز دارد)
         File tempDir = getCacheDir();
-        if (!tempDir.exists()) {
-            tempDir.mkdirs();
-        }
-
         String fileName = "record_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".mp4";
         tempRecordingFile = new File(tempDir, fileName);
 
@@ -190,7 +182,6 @@ public class ScreenCaptureService extends Service {
             );
 
             mediaRecorder.start();
-            isRecording = true;
             Log.i(TAG, "ضبط شروع شد (صدا: " + withAudio + "): " + outFile.getAbsolutePath());
             return true;
         } catch (Exception e) {
@@ -208,13 +199,6 @@ public class ScreenCaptureService extends Service {
     }
 
     private void takeScreenshot() {
-        if (mediaProjection == null) {
-            Log.e(TAG, "MediaProjection فعال نیست");
-            return;
-        }
-
-        cleanupScreenshot();
-
         imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2);
 
         screenshotDisplay = mediaProjection.createVirtualDisplay(
@@ -234,15 +218,9 @@ public class ScreenCaptureService extends Service {
             } catch (Exception e) {
                 Log.e(TAG, "خطا در گرفتن عکس", e);
             } finally {
-                if (image != null) {
-                    image.close();
-                }
+                if (image != null) image.close();
                 cleanupScreenshot();
-                // در صورتی که ضبط فیلم در جریان نیست، سرویس را متوقف کن
-                if (!isRecording) {
-                    stopForeground(true);
-                    stopSelf();
-                }
+                stopSelf();
             }
         }, workerHandler);
     }
@@ -291,7 +269,6 @@ public class ScreenCaptureService extends Service {
             resolver.update(itemUri, values, null, null);
         }
 
-        bitmap.recycle();
         Log.i(TAG, "عکس در گالری ذخیره شد: " + itemUri);
     }
 
@@ -324,9 +301,12 @@ public class ScreenCaptureService extends Service {
             recordingDisplay.release();
             recordingDisplay = null;
         }
+        if (mediaProjection != null) {
+            mediaProjection.stop();
+            mediaProjection = null;
+        }
 
-        isRecording = false;
-
+        // انتقال فایل موقت به گالری عمومی از طریق MediaStore
         if (recorderStoppedOk && tempRecordingFile != null && tempRecordingFile.exists()) {
             moveVideoToGallery(tempRecordingFile);
             tempRecordingFile = null;
@@ -384,9 +364,7 @@ public class ScreenCaptureService extends Service {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID, "Screen Capture", NotificationManager.IMPORTANCE_LOW);
             NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null) {
-                nm.createNotificationChannel(channel);
-            }
+            nm.createNotificationChannel(channel);
         }
     }
 
@@ -409,10 +387,6 @@ public class ScreenCaptureService extends Service {
         super.onDestroy();
         stopRecording();
         cleanupScreenshot();
-        if (mediaProjection != null) {
-            mediaProjection.stop();
-            mediaProjection = null;
-        }
         if (workerThread != null) {
             workerThread.quitSafely();
         }
@@ -422,4 +396,4 @@ public class ScreenCaptureService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-}
+            }
