@@ -23,14 +23,14 @@ try:
     Context = None
     BuildVersion = None
 
-    CAPTURE_ACTIVITY_CLASS = "org.example.screenrecorder.CaptureRequestActivity"
     SERVICE_CLASS = "org.example.screenrecorder.ScreenCaptureService"
     FLOATING_SERVICE_CLASS = "org.example.screenrecorder.FloatingWidgetService"
-    
-    EXTRA_ACTION = "capture_action"
     ACTION_START = "org.example.screenrecorder.START"
     ACTION_SCREENSHOT = "org.example.screenrecorder.SCREENSHOT"
     ACTION_STOP = "org.example.screenrecorder.STOP"
+
+    REQUEST_RECORD = 1001
+    REQUEST_SCREENSHOT = 1002
 
     if platform == "android":
         try:
@@ -104,6 +104,7 @@ try:
 
     class ScreenRecorderApp(App):
         def build(self):
+            self.pending_action = None
             self.status_label = PersianLabel(text="آماده", font_size="16sp")
 
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
@@ -127,6 +128,11 @@ try:
             layout.add_widget(floating_button)
 
             if platform == "android":
+                try:
+                    android_activity.bind(on_activity_result=self.on_activity_result)
+                except Exception as e:
+                    print(f"bind activity failed: {e}")
+
                 self._request_runtime_permissions()
 
             return layout
@@ -142,29 +148,69 @@ try:
             except Exception as e:
                 print(f"permission request failed: {e}")
 
-        # ---------- درخواست مجوز از طریق CaptureRequestActivity اختصاصی ----------
-        def _request_capture(self, action_type):
+        # ---------- درخواست مجوز MediaProjection ----------
+        def _request_capture(self, action, request_code):
             if platform != "android" or PythonActivity is None or autoclass is None:
                 self.status_label.text = ftext("فقط روی اندروید")
                 return
             try:
+                self.pending_action = action
                 activity = PythonActivity.mActivity
-                intent = Intent(activity, autoclass(CAPTURE_ACTIVITY_CLASS))
-                intent.putExtra(EXTRA_ACTION, action_type)
-                
-                # تنظیم Flagهای لازم برای باز شدن اکتیویتی جدید
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                activity.startActivity(intent)
-
-                self.status_label.text = ftext("در حال درخواست مجوز ضبط...")
+                MediaProjectionManager = autoclass("android.media.projection.MediaProjectionManager")
+                projection_service = activity.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                mgr = cast(MediaProjectionManager, projection_service)
+                intent = mgr.createScreenCaptureIntent()
+                activity.startActivityForResult(intent, request_code)
+                self.status_label.text = ftext("منتظر تأیید مجوز...")
             except Exception as e:
-                self.status_label.text = ftext(f"خطا در اجرای CaptureRequestActivity: {e}")
+                self.status_label.text = ftext(f"خطا در درخواست مجوز: {e}")
 
         def start_recording(self, instance):
-            self._request_capture(ACTION_START)
+            self._request_capture("record", REQUEST_RECORD)
 
         def take_screenshot(self, instance):
-            self._request_capture(ACTION_SCREENSHOT)
+            self._request_capture("screenshot", REQUEST_SCREENSHOT)
+
+        def on_activity_result(self, request_code, result_code, data):
+            if request_code not in (REQUEST_RECORD, REQUEST_SCREENSHOT):
+                return
+            if result_code != -1:
+                self.status_label.text = ftext("مجوز رد شد")
+                self.pending_action = None
+                return
+
+            action = ACTION_START if request_code == REQUEST_RECORD else ACTION_SCREENSHOT
+            self.status_label.text = ftext("مجوز گرفته شد...")
+            self._start_service(action, result_code, data)
+
+        def _start_service(self, action, result_code, data):
+            if PythonActivity is None or autoclass is None or cast is None:
+                self.status_label.text = ftext("Android init failed")
+                return
+            try:
+                activity = PythonActivity.mActivity
+                service_intent = Intent(activity, autoclass(SERVICE_CLASS))
+                service_intent.setAction(action)
+
+                # ---------- اصلاح: استفاده از Bundle.putInt به‌جای putExtra مستقیم ----------
+                # pyjnius گاهی وقتی result_code به putExtra داده می‌شود، overload مربوط به
+                # short را به‌جای int انتخاب می‌کند، که باعث ClassCastException در سمت جاوا
+                # هنگام خواندن با getIntExtra می‌شود. استفاده از Bundle.putInt این ابهام را
+                # از بین می‌برد و مطمئن می‌کند مقدار واقعاً به‌عنوان int ذخیره شود.
+                Bundle = autoclass('android.os.Bundle')
+                extras = Bundle()
+                extras.putInt("resultCode", result_code)
+                extras.putParcelable("data", cast('android.os.Parcelable', data))
+                service_intent.putExtras(extras)
+
+                if BuildVersion is not None and BuildVersion.SDK_INT >= 26:
+                    activity.startForegroundService(service_intent)
+                else:
+                    activity.startService(service_intent)
+
+                self.status_label.text = ftext("در حال ضبط..." if action == ACTION_START else "در حال گرفتن عکس...")
+            except Exception as e:
+                self.status_label.text = ftext(f"خطا در شروع سرویس: {e}")
 
         def stop_recording(self, instance):
             if platform != "android" or PythonActivity is None or Intent is None or autoclass is None:
