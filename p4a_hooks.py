@@ -43,16 +43,18 @@ def after_apk_build(toolchain):
     manifest_file = Path(toolchain._dist.dist_dir) / "src" / "main" / "AndroidManifest.xml"
     manifest = manifest_file.read_text(encoding="utf-8")
 
+    # ۱. تزریق سرویس‌ها و اکتیویتی به داخل تگ application
     if "ScreenCaptureService" not in manifest:
         manifest = manifest.replace("</application>", f"{SERVICE_XML}\n</application>")
-        print("[hook] سرویس‌ها به AndroidManifest.xml اضافه شدن")
+        print("[hook] سرویس‌ها به AndroidManifest.xml اضافه شدند")
     else:
-        print("[hook] سرویس‌ها از قبل توی منیفست بودن، رد شد")
+        print("[hook] سرویس‌ها از قبل در مانیفست بودند، رد شد")
 
+    # ۲. تزریق مجوزها درست قبل از تگ شروع application (ساختار کاملاً استاندارد XML)
     if "FOREGROUND_SERVICE_MEDIA_PROJECTION" not in manifest:
-        manifest = manifest.replace("</manifest>", f"{PERMISSIONS_XML}\n</manifest>")
-        print("[hook] مجوزهای اضافی به AndroidManifest.xml اضافه شدن")
+        manifest = manifest.replace("<application", f"{PERMISSIONS_XML}\n<application")
+        print("[hook] مجوزهای اضافی به AndroidManifest.xml اضافه شدند")
     else:
-        print("[hook] مجوزها از قبل توی منیفست بودن، رد شد")
+        print("[hook] مجوزها از قبل در مانیفست بودند، رد شد")
 
     manifest_file.write_text(manifest, encoding="utf-8")
