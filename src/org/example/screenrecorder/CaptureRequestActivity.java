@@ -16,10 +16,6 @@ public class CaptureRequestActivity extends Activity {
 
     private String pendingAction;
     private boolean requested = false;
-    private boolean pendingFinish = false;
-    private int pendingResultCode;
-    private Intent pendingData;
-    private boolean hasPendingResult = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,21 +40,7 @@ public class CaptureRequestActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == REQUEST_CODE) {
-            hasPendingResult = true;
-            pendingResultCode = resultCode;
-            pendingData = data;
-            pendingFinish = true;
-        }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-
-        if (pendingFinish) {
-            pendingFinish = false;
-
-            if (hasPendingResult && pendingResultCode == Activity.RESULT_OK && pendingData != null) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
                 String action = ScreenCaptureService.ACTION_SCREENSHOT.equals(pendingAction)
                         ? ScreenCaptureService.ACTION_SCREENSHOT
                         : ScreenCaptureService.ACTION_START;
@@ -67,8 +49,8 @@ public class CaptureRequestActivity extends Activity {
                 serviceIntent.setAction(action);
 
                 Bundle extras = new Bundle();
-                extras.putInt("resultCode", pendingResultCode);
-                extras.putParcelable("data", pendingData);
+                extras.putInt("resultCode", resultCode);
+                extras.putParcelable("data", data);
                 serviceIntent.putExtras(extras);
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -78,8 +60,8 @@ public class CaptureRequestActivity extends Activity {
                 }
             }
 
-            // finish() را به تعویق می‌اندازیم تا onResume() کاملاً تمام شود
-            // (رفع مشکل IllegalStateException: did not call finish() prior to onResume() completing)
+            // مهم: finish را با تأخیر خیلی کوتاه صدا می‌زنیم تا خطای
+            // "did not call finish() prior to onResume() completing" رخ نده
             new Handler(Looper.getMainLooper()).post(this::finish);
         }
     }
