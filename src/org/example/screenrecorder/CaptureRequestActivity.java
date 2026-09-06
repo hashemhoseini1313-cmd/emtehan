@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 
 public class CaptureRequestActivity extends Activity {
 
@@ -13,27 +15,24 @@ public class CaptureRequestActivity extends Activity {
     private static final int REQUEST_CODE = 5001;
 
     private String pendingAction;
+    private boolean requested = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // اگر اکتیویتی در حال بازسازی مجدد بود، دوباره درخواست ندهد
-        if (savedInstanceState != null) {
+        if (requested) {
             finish();
             return;
         }
+        requested = true;
 
         pendingAction = getIntent().getStringExtra(EXTRA_ACTION);
 
         MediaProjectionManager mgr =
                 (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-        if (mgr != null) {
-            Intent captureIntent = mgr.createScreenCaptureIntent();
-            startActivityForResult(captureIntent, REQUEST_CODE);
-        } else {
-            finish();
-        }
+        Intent captureIntent = mgr.createScreenCaptureIntent();
+        startActivityForResult(captureIntent, REQUEST_CODE);
     }
 
     @Override
@@ -61,24 +60,15 @@ public class CaptureRequestActivity extends Activity {
                 }
             }
 
-            // فراخوانی مستقیم و بدون تاخیر finish برای جلوگیری از اجرای onResume و کرش برنامه
-            finish();
-        }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // اگر اکتیویتی در حال بسته‌شدن است، از اجرای کدهای احتمالی دیگر جلوگیری می‌شود
-        if (isFinishing()) {
-            return;
+            // مهم: finish را با تأخیر خیلی کوتاه صدا می‌زنیم تا خطای
+            // "did not call finish() prior to onResume() completing" رخ نده
+            new Handler(Looper.getMainLooper()).post(this::finish);
         }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent);
         finish();
     }
 }
