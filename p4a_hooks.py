@@ -20,6 +20,7 @@ SERVICE_XML = """
         android:theme="@android:style/Theme.NoDisplay"
         android:excludeFromRecents="true"
         android:launchMode="singleInstance"
+        android:process=":capture"
         android:exported="false" />
 """
 
