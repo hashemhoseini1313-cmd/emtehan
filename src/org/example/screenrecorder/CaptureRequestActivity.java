@@ -16,6 +16,9 @@ public class CaptureRequestActivity extends Activity {
 
     private String pendingAction;
     private boolean requested = false;
+    private boolean resultReceived = false;
+    private int pendingResultCode;
+    private Intent pendingData;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,7 +43,20 @@ public class CaptureRequestActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
+            resultReceived = true;
+            pendingResultCode = resultCode;
+            pendingData = data;
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        if (resultReceived) {
+            resultReceived = false;
+
+            if (pendingResultCode == Activity.RESULT_OK && pendingData != null) {
                 String action = ScreenCaptureService.ACTION_SCREENSHOT.equals(pendingAction)
                         ? ScreenCaptureService.ACTION_SCREENSHOT
                         : ScreenCaptureService.ACTION_START;
@@ -49,8 +65,8 @@ public class CaptureRequestActivity extends Activity {
                 serviceIntent.setAction(action);
 
                 Bundle extras = new Bundle();
-                extras.putInt("resultCode", resultCode);
-                extras.putParcelable("data", data);
+                extras.putInt("resultCode", pendingResultCode);
+                extras.putParcelable("data", pendingData);
                 serviceIntent.putExtras(extras);
 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -60,8 +76,9 @@ public class CaptureRequestActivity extends Activity {
                 }
             }
 
-            // مهم: finish را با تأخیر خیلی کوتاه صدا می‌زنیم تا خطای
-            // "did not call finish() prior to onResume() completing" رخ نده
+            // مهم: finish() باید بعد از تکمیل کامل onResume() صدا زده شود،
+            // نه از داخل onActivityResult یا خود onResume به‌طور مستقیم،
+            // وگرنه IllegalStateException رخ می‌دهد (طبق رفتار شناخته‌شده اندروید).
             new Handler(Looper.getMainLooper()).post(this::finish);
         }
     }
