@@ -6,8 +6,6 @@ import android.content.Intent;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 
 public class CaptureRequestActivity extends Activity {
 
@@ -76,10 +74,10 @@ public class CaptureRequestActivity extends Activity {
                 }
             }
 
-            // مهم: finish() باید بعد از تکمیل کامل onResume() صدا زده شود،
-            // نه از داخل onActivityResult یا خود onResume به‌طور مستقیم،
-            // وگرنه IllegalStateException رخ می‌دهد (طبق رفتار شناخته‌شده اندروید).
-            new Handler(Looper.getMainLooper()).post(this::finish);
+            // مهم: finish() باید مستقیم و بدون تأخیر (نه با Handler.post) از داخل
+            // خود onResume() صدا زده شود؛ چون سیستم بلافاصله بعد از برگشتن onResume()
+            // چک می‌کند که آیا finish() صدا زده شده یا نه، و Handler.post دیر اجرا می‌شود.
+            finish();
         }
     }
 
