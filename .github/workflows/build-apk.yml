@@ -99,6 +99,7 @@ jobs:
           --ndk-dir=/home/runner/.buildozer/android/platform/android-ndk-r25b \
           --dist-name=screenrecorder \
           --permission INTERNET \
+          --permission ACCESS_NETWORK_STATE \
           --permission READ_MEDIA_IMAGES \
           --permission READ_MEDIA_VIDEO \
           --add-source=src \
