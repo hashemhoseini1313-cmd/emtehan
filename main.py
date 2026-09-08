@@ -11,7 +11,7 @@ try:
     from kivy.uix.label import Label
     from kivy.core.text import LabelBase
     from kivy.utils import platform
-    from kivy.clock import Clock
+    from kivy.clock import Clock, mainthread
 
     import arabic_reshaper
 
@@ -19,6 +19,8 @@ try:
     android_activity = None
     autoclass = None
     cast = None
+    PythonJavaClass = None
+    java_method = None
     PythonActivity = None
     Intent = None
     Context = None
@@ -36,7 +38,7 @@ try:
     if platform == "android":
         try:
             from android import activity as android_activity
-            from jnius import autoclass, cast
+            from jnius import autoclass, cast, PythonJavaClass, java_method
 
             PythonActivity = autoclass("org.kivy.android.PythonActivity")
             Intent = autoclass("android.content.Intent")
@@ -106,6 +108,7 @@ try:
     class ScreenRecorderApp(App):
         def build(self):
             self.pending_action = None
+            self._net_callback = None
             self.status_label = PersianLabel(text="آماده", font_size="16sp")
 
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
@@ -135,12 +138,54 @@ try:
                     print(f"bind activity failed: {e}")
 
                 self._request_runtime_permissions()
+                self._register_network_callback()
 
-            # ---------- بررسی دوره‌ای اتصال اینترنت ----------
+            # بررسی اولیه + یک بررسی دوره‌ی پشتیبان (fallback) هر ۳ ثانیه،
+            # برای موردی که NetworkCallback به هر دلیلی ثبت نشده باشد
             self._update_connectivity_ui()
             Clock.schedule_interval(lambda dt: self._update_connectivity_ui(), 3)
 
             return layout
+
+        # ---------- ثبت شنونده‌ی رویدادمحور تغییرات شبکه ----------
+        def _register_network_callback(self):
+            try:
+                activity = PythonActivity.mActivity
+                ConnectivityManager = autoclass('android.net.ConnectivityManager')
+                cm = cast(ConnectivityManager, activity.getSystemService(Context.CONNECTIVITY_SERVICE))
+
+                app_self = self
+
+                class NetCallback(PythonJavaClass):
+                    __javainterfaces__ = ['android/net/ConnectivityManager$NetworkCallback']
+                    __javacontext__ = 'app'
+
+                    @java_method('(Landroid/net/Network;)V')
+                    def onAvailable(self, network):
+                        app_self._on_network_changed()
+
+                    @java_method('(Landroid/net/Network;)V')
+                    def onLost(self, network):
+                        app_self._on_network_changed()
+
+                    @java_method('(Landroid/net/Network;Landroid/net/NetworkCapabilities;)V')
+                    def onCapabilitiesChanged(self, network, capabilities):
+                        app_self._on_network_changed()
+
+                NetworkRequestBuilder = autoclass('android.net.NetworkRequest$Builder')
+                NetworkCapabilities = autoclass('android.net.NetworkCapabilities')
+                request = NetworkRequestBuilder() \
+                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) \
+                    .build()
+
+                self._net_callback = NetCallback()
+                cm.registerNetworkCallback(request, self._net_callback)
+            except Exception as e:
+                print(f"network callback registration failed: {e}")
+
+        @mainthread
+        def _on_network_changed(self):
+            self._update_connectivity_ui()
 
         # ---------- بررسی اتصال اینترنت ----------
         def _is_connected(self):
@@ -178,6 +223,8 @@ try:
 
             if not connected:
                 self.status_label.text = ftext("اتصال اینترنت برقرار نیست")
+            elif self.status_label.text == ftext("اتصال اینترنت برقرار نیست"):
+                self.status_label.text = ftext("آماده")
 
             return connected
 
