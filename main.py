@@ -11,6 +11,7 @@ try:
     from kivy.uix.label import Label
     from kivy.core.text import LabelBase
     from kivy.utils import platform
+    from kivy.clock import Clock
 
     import arabic_reshaper
 
@@ -110,22 +111,22 @@ try:
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
 
             title = PersianLabel(text="ضبط صفحه گوشی (اندروید 15)", font_size="24sp")
-            start_button = PersianButton(text="شروع ضبط صفحه", font_size="18sp", size_hint_y=None, height=65)
-            stop_button = PersianButton(text="توقف ضبط", font_size="18sp", size_hint_y=None, height=65)
-            photo_button = PersianButton(text="عکس از صفحه", font_size="18sp", size_hint_y=None, height=65)
-            floating_button = PersianButton(text="باز کردن دکمه شناور", font_size="18sp", size_hint_y=None, height=65)
+            self.start_button = PersianButton(text="شروع ضبط صفحه", font_size="18sp", size_hint_y=None, height=65)
+            self.stop_button = PersianButton(text="توقف ضبط", font_size="18sp", size_hint_y=None, height=65)
+            self.photo_button = PersianButton(text="عکس از صفحه", font_size="18sp", size_hint_y=None, height=65)
+            self.floating_button = PersianButton(text="باز کردن دکمه شناور", font_size="18sp", size_hint_y=None, height=65)
 
-            start_button.bind(on_press=self.start_recording)
-            stop_button.bind(on_press=self.stop_recording)
-            photo_button.bind(on_press=self.take_screenshot)
-            floating_button.bind(on_press=self.open_floating_widget)
+            self.start_button.bind(on_press=self.start_recording)
+            self.stop_button.bind(on_press=self.stop_recording)
+            self.photo_button.bind(on_press=self.take_screenshot)
+            self.floating_button.bind(on_press=self.open_floating_widget)
 
             layout.add_widget(title)
             layout.add_widget(self.status_label)
-            layout.add_widget(start_button)
-            layout.add_widget(stop_button)
-            layout.add_widget(photo_button)
-            layout.add_widget(floating_button)
+            layout.add_widget(self.start_button)
+            layout.add_widget(self.stop_button)
+            layout.add_widget(self.photo_button)
+            layout.add_widget(self.floating_button)
 
             if platform == "android":
                 try:
@@ -135,7 +136,50 @@ try:
 
                 self._request_runtime_permissions()
 
+            # ---------- بررسی دوره‌ای اتصال اینترنت ----------
+            self._update_connectivity_ui()
+            Clock.schedule_interval(lambda dt: self._update_connectivity_ui(), 3)
+
             return layout
+
+        # ---------- بررسی اتصال اینترنت ----------
+        def _is_connected(self):
+            if platform != "android" or PythonActivity is None or autoclass is None:
+                return True
+            try:
+                activity = PythonActivity.mActivity
+                ConnectivityManager = autoclass('android.net.ConnectivityManager')
+                cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE)
+                cm = cast(ConnectivityManager, cm)
+
+                if BuildVersion is not None and BuildVersion.SDK_INT >= 23:
+                    network = cm.getActiveNetwork()
+                    if network is None:
+                        return False
+                    NetworkCapabilities = autoclass('android.net.NetworkCapabilities')
+                    capabilities = cm.getNetworkCapabilities(network)
+                    if capabilities is None:
+                        return False
+                    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                else:
+                    network_info = cm.getActiveNetworkInfo()
+                    return network_info is not None and network_info.isConnected()
+            except Exception as e:
+                print(f"connectivity check failed: {e}")
+                return True
+
+        def _update_connectivity_ui(self):
+            connected = self._is_connected()
+
+            self.start_button.disabled = not connected
+            self.stop_button.disabled = not connected
+            self.photo_button.disabled = not connected
+            self.floating_button.disabled = not connected
+
+            if not connected:
+                self.status_label.text = ftext("اتصال اینترنت برقرار نیست")
+
+            return connected
 
         # ---------- مجوزهای زمان اجرا ----------
         def _request_runtime_permissions(self):
@@ -150,6 +194,8 @@ try:
 
         # ---------- درخواست مجوز MediaProjection ----------
         def _request_capture(self, action, request_code):
+            if not self._update_connectivity_ui():
+                return
             if platform != "android" or PythonActivity is None or autoclass is None:
                 self.status_label.text = ftext("فقط روی اندروید")
                 return
@@ -213,6 +259,8 @@ try:
                 self.status_label.text = ftext(f"خطا در شروع سرویس: {e}")
 
         def stop_recording(self, instance):
+            if not self._update_connectivity_ui():
+                return
             if platform != "android" or PythonActivity is None or Intent is None or autoclass is None:
                 return
             try:
@@ -226,6 +274,8 @@ try:
 
         # ---------- باز کردن دکمه شناور ----------
         def open_floating_widget(self, instance):
+            if not self._update_connectivity_ui():
+                return
             if platform != "android" or PythonActivity is None or autoclass is None:
                 self.status_label.text = ftext("فقط روی اندروید")
                 return
