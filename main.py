@@ -140,10 +140,10 @@ try:
                 self._request_runtime_permissions()
                 self._register_network_callback()
 
-            # بررسی اولیه + یک بررسی دوره‌ی پشتیبان (fallback) هر ۳ ثانیه،
+            # بررسی اولیه + یک بررسی دوره‌ی پشتیبان (fallback) هر ۱ ثانیه،
             # برای موردی که NetworkCallback به هر دلیلی ثبت نشده باشد
             self._update_connectivity_ui()
-            Clock.schedule_interval(lambda dt: self._update_connectivity_ui(), 3)
+            Clock.schedule_interval(lambda dt: self._update_connectivity_ui(), 1)
 
             return layout
 
