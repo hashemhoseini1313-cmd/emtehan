@@ -185,6 +185,7 @@ try:
 
         @mainthread
         def _on_network_changed(self):
+            print("NET_CALLBACK: network changed event fired")
             self._update_connectivity_ui()
 
         # ---------- بررسی اتصال اینترنت ----------
@@ -215,6 +216,7 @@ try:
 
         def _update_connectivity_ui(self):
             connected = self._is_connected()
+            print(f"NET_CALLBACK: connectivity check result = {connected}")
 
             self.start_button.disabled = not connected
             self.stop_button.disabled = not connected
