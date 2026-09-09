@@ -25,9 +25,11 @@ try:
     Intent = None
     Context = None
     BuildVersion = None
+    NetworkMonitor = None
 
     SERVICE_CLASS = "org.example.screenrecorder.ScreenCaptureService"
     FLOATING_SERVICE_CLASS = "org.example.screenrecorder.FloatingWidgetService"
+    NETWORK_MONITOR_CLASS = "org.example.screenrecorder.NetworkMonitor"
     ACTION_START = "org.example.screenrecorder.START"
     ACTION_SCREENSHOT = "org.example.screenrecorder.SCREENSHOT"
     ACTION_STOP = "org.example.screenrecorder.STOP"
@@ -44,6 +46,11 @@ try:
             Intent = autoclass("android.content.Intent")
             Context = autoclass("android.content.Context")
             BuildVersion = autoclass('android.os.Build$VERSION')
+
+            try:
+                NetworkMonitor = autoclass(NETWORK_MONITOR_CLASS)
+            except Exception as e_net:
+                print(f"Failed to load NetworkMonitor autoclass: {e_net}")
         except Exception as e:
             print(f"Android init failed: {e}")
 
@@ -140,46 +147,19 @@ try:
                 self._request_runtime_permissions()
                 self._register_network_callback()
 
-            # بررسی اولیه + یک بررسی دوره‌ی پشتیبان (fallback) هر ۱ ثانیه،
-            # برای موردی که NetworkCallback به هر دلیلی ثبت نشده باشد
+            # بررسی اولیه + بررسی دوره‌ی پشتیبان (fallback) هر ۱ ثانیه
             self._update_connectivity_ui()
             Clock.schedule_interval(lambda dt: self._update_connectivity_ui(), 1)
 
             return layout
 
-        # ---------- ثبت شنونده‌ی رویدادمحور تغییرات شبکه ----------
+        # ---------- ثبت شنونده‌ی نیتیو جاوا برای تغییرات شبکه ----------
         def _register_network_callback(self):
             try:
-                activity = PythonActivity.mActivity
-                ConnectivityManager = autoclass('android.net.ConnectivityManager')
-                cm = cast(ConnectivityManager, activity.getSystemService(Context.CONNECTIVITY_SERVICE))
-
-                app_self = self
-
-                class NetCallback(PythonJavaClass):
-                    __javainterfaces__ = ['android/net/ConnectivityManager$NetworkCallback']
-                    __javacontext__ = 'app'
-
-                    @java_method('(Landroid/net/Network;)V')
-                    def onAvailable(self, network):
-                        app_self._on_network_changed()
-
-                    @java_method('(Landroid/net/Network;)V')
-                    def onLost(self, network):
-                        app_self._on_network_changed()
-
-                    @java_method('(Landroid/net/Network;Landroid/net/NetworkCapabilities;)V')
-                    def onCapabilitiesChanged(self, network, capabilities):
-                        app_self._on_network_changed()
-
-                NetworkRequestBuilder = autoclass('android.net.NetworkRequest$Builder')
-                NetworkCapabilities = autoclass('android.net.NetworkCapabilities')
-                request = NetworkRequestBuilder() \
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) \
-                    .build()
-
-                self._net_callback = NetCallback()
-                cm.registerNetworkCallback(request, self._net_callback)
+                if NetworkMonitor is not None and PythonActivity is not None:
+                    activity = PythonActivity.mActivity
+                    NetworkMonitor.startMonitoring(activity)
+                    print("Native NetworkMonitor registered successfully")
             except Exception as e:
                 print(f"network callback registration failed: {e}")
 
@@ -190,9 +170,16 @@ try:
 
         # ---------- بررسی اتصال اینترنت ----------
         def _is_connected(self):
-            if platform != "android" or PythonActivity is None or autoclass is None:
+            if platform != "android":
                 return True
             try:
+                # اولویت اول: خواندن مستقیم پرچم زنده از کلاس NetworkMonitor جاوا
+                if NetworkMonitor is not None:
+                    return bool(NetworkMonitor.isConnected)
+
+                if PythonActivity is None or autoclass is None:
+                    return True
+
                 activity = PythonActivity.mActivity
                 ConnectivityManager = autoclass('android.net.ConnectivityManager')
                 cm = activity.getSystemService(Context.CONNECTIVITY_SERVICE)
@@ -287,11 +274,6 @@ try:
                 service_intent = Intent(activity, autoclass(SERVICE_CLASS))
                 service_intent.setAction(action)
 
-                # ---------- اصلاح: استفاده از Bundle.putInt به‌جای putExtra مستقیم ----------
-                # pyjnius گاهی وقتی result_code به putExtra داده می‌شود، overload مربوط به
-                # short را به‌جای int انتخاب می‌کند، که باعث ClassCastException در سمت جاوا
-                # هنگام خواندن با getIntExtra می‌شود. استفاده از Bundle.putInt این ابهام را
-                # از بین می‌برد و مطمئن می‌کند مقدار واقعاً به‌عنوان int ذخیره شود.
                 Bundle = autoclass('android.os.Bundle')
                 extras = Bundle()
                 extras.putInt("resultCode", result_code)
