@@ -1,3 +1,5 @@
+import os
+import shutil
 from pathlib import Path
 
 SERVICE_XML = """
@@ -39,6 +41,24 @@ PERMISSIONS_XML = """
 """
 
 
+def before_apk_build(toolchain):
+    # کپی کردن فایل‌های جاوا از پوشه java_src به سورس اندروید
+    try:
+        src_dir = os.path.join(os.getcwd(), "java_src")
+        dest_dir = Path(toolchain._dist.dist_dir) / "src" / "main" / "java" / "org" / "example" / "screenrecorder"
+        
+        if os.path.exists(src_dir):
+            os.makedirs(dest_dir, exist_ok=True)
+            for f in os.listdir(src_dir):
+                if f.endswith(".java"):
+                    shutil.copy2(os.path.join(src_dir, f), dest_dir / f)
+                    print(f"[hook] فایل جاوا کپی شد: {f}")
+        else:
+            print("[hook] پوشه java_src یافت نشد!")
+    except Exception as e:
+        print(f"[hook] خطا در کپی فایل‌های جاوا: {e}")
+
+
 def after_apk_build(toolchain):
     manifest_file = Path(toolchain._dist.dist_dir) / "src" / "main" / "AndroidManifest.xml"
     manifest = manifest_file.read_text(encoding="utf-8")
@@ -50,7 +70,7 @@ def after_apk_build(toolchain):
     else:
         print("[hook] سرویس‌ها از قبل در مانیفست بودند، رد شد")
 
-    # ۲. تزریق مجوزها درست قبل از تگ شروع application (ساختار کاملاً استاندارد XML)
+    # ۲. تزریق مجوزها درست قبل از تگ شروع application
     if "FOREGROUND_SERVICE_MEDIA_PROJECTION" not in manifest:
         manifest = manifest.replace("<application", f"{PERMISSIONS_XML}\n<application")
         print("[hook] مجوزهای اضافی به AndroidManifest.xml اضافه شدند")
