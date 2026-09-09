@@ -36,8 +36,8 @@ public class NetworkMonitor {
                 @Override
                 public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
                     if (capabilities != null) {
-                        boolean hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                                              capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+                        // حذف NET_CAPABILITY_VALIDATED برای پاسخ‌دهی آنی و بدون تاخیر
+                        boolean hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
                         isConnected = hasInternet;
                     }
                 }
