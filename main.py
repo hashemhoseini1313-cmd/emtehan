@@ -49,8 +49,10 @@ try:
 
             try:
                 NetworkMonitor = autoclass(NETWORK_MONITOR_CLASS)
+                print(f"Successfully loaded NetworkMonitor class.")
             except Exception as e_net:
-                print(f"Failed to load NetworkMonitor: {e_net}")
+                print(f"Failed to load NetworkMonitor class: {e_net}")
+                NetworkMonitor = None # اطمینان از None بودن در صورت خطا
         except Exception as e:
             print(f"Android init failed: {e}")
 
@@ -84,6 +86,7 @@ try:
                 LabelBase.register(name="PersianFont", fn_regular=candidate)
                 FONT_FILE = candidate
                 _FONT_NAME = "PersianFont"
+                print("Persian font registered successfully.")
             except Exception as e:
                 print(f"font registration failed: {e}")
                 _FONT_NAME = "Roboto"
@@ -140,6 +143,7 @@ try:
             if platform == "android":
                 try:
                     android_activity.bind(on_activity_result=self.on_activity_result)
+                    print("Bound on_activity_result.")
                 except Exception as e:
                     print(f"bind activity failed: {e}")
 
@@ -149,6 +153,7 @@ try:
             # بررسی اولیه + بررسی دوره‌ای هر ۱ ثانیه
             self._update_connectivity_ui()
             Clock.schedule_interval(self._update_connectivity_ui, 1)
+            print("Kivy app build complete. Starting connectivity checks.")
 
             return layout
 
@@ -157,29 +162,55 @@ try:
             try:
                 if NetworkMonitor is not None and PythonActivity is not None:
                     activity = PythonActivity.mActivity
-                    NetworkMonitor.startMonitoring(activity)
-                    print("Native NetworkMonitor registered successfully")
+                    # اطمینان از اینکه متد startMonitoring وجود دارد
+                    if hasattr(NetworkMonitor, 'startMonitoring'):
+                        NetworkMonitor.startMonitoring(activity)
+                        print("Native NetworkMonitor registered successfully.")
+                    else:
+                        print("NetworkMonitor class exists but does not have 'startMonitoring' method.")
                 else:
-                    print("NetworkMonitor not available")
+                    print("NetworkMonitor or PythonActivity is not available. Cannot register network callback.")
             except Exception as e:
                 print(f"network callback registration failed: {e}")
 
         # ---------- بررسی اتصال اینترنت ----------
         def _is_connected(self):
+            print("DEBUG: Entering _is_connected method.")
             if platform != "android":
+                print("DEBUG: Not on Android platform, returning True.")
                 return True
             try:
                 if NetworkMonitor is not None:
-                    return bool(NetworkMonitor.isConnected)
-                return True
+                    # اینجا از متد getter جاوا استفاده می‌کنیم
+                    if hasattr(NetworkMonitor, 'getIsConnected'):
+                        is_connected_native = NetworkMonitor.getIsConnected()
+                        print(f"DEBUG: NetworkMonitor.getIsConnected() returned: {is_connected_native}")
+                        return bool(is_connected_native)
+                    else:
+                        # اگر متد getter وجود نداشت، سعی می‌کنیم از مقدار مستقیم استفاده کنیم
+                        if hasattr(NetworkMonitor, 'isConnected'):
+                            is_connected_native = NetworkMonitor.isConnected
+                            print(f"DEBUG: NetworkMonitor.isConnected (direct access) returned: {is_connected_native}")
+                            return bool(is_connected_native)
+                        else:
+                            print("DEBUG: NetworkMonitor has neither 'getIsConnected' nor 'isConnected'. Assuming not connected.")
+                            return False
+                else:
+                    print("DEBUG: NetworkMonitor is None. Assuming not connected.")
+                    return False
             except Exception as e:
-                print(f"connectivity check failed: {e}")
-                return True
+                print(f"DEBUG: Exception in _is_connected: {e}")
+                print(f"DEBUG: Full traceback: {traceback.format_exc()}")
+                return False # در صورت بروز خطا، فرض می‌کنیم متصل نیست
 
+        # ---------- آپدیت UI مربوط به وضعیت اتصال ----------
+        @mainthread # اطمینان از اجرا در ترد اصلی Kivy
         def _update_connectivity_ui(self, *args):
+            print("DEBUG: Entering _update_connectivity_ui method.")
             connected = self._is_connected()
-            print(f"NET_CALLBACK: connectivity check result = {connected}")
+            print(f"NET_CALLBACK: connectivity check result = {connected}") # این پرینت حالا باید دیده شود
 
+            # دکمه‌ها را فقط زمانی غیرفعال می‌کنیم که به طور واضح متصل نباشیم
             self.start_button.disabled = not connected
             self.stop_button.disabled = not connected
             self.photo_button.disabled = not connected
@@ -187,8 +218,10 @@ try:
 
             if connected:
                 self.status_label.text = ftext("آماده")
+                print("DEBUG: UI updated to 'آماده'.")
             else:
                 self.status_label.text = ftext("اتصال اینترنت برقرار نیست")
+                print("DEBUG: UI updated to 'اتصال اینترنت برقرار نیست'.")
 
             return connected
 
@@ -200,17 +233,25 @@ try:
                 if BuildVersion is not None and BuildVersion.SDK_INT >= 33:
                     perms.append(Permission.POST_NOTIFICATIONS)
                 request_permissions(perms)
+                print("Requested runtime permissions.")
             except Exception as e:
                 print(f"permission request failed: {e}")
 
         # ---------- درخواست مجوز MediaProjection ----------
         def _request_capture(self, action, request_code):
-            if not self._update_connectivity_ui():
+            # ابتدا وضعیت اتصال را چک می‌کنیم
+            if not self._is_connected(): # از _is_connected استفاده می‌کنیم که پرینت دارد
+                self.status_label.text = ftext("برای شروع، اینترنت لازم است.")
+                print("ACTION_DENIED: Internet not connected, cannot start capture.")
                 return
+
             if platform != "android" or PythonActivity is None or autoclass is None:
-                self.status_label.text = ftext("فقط روی اندروید")
+                self.status_label.text = ftext("این قابلیت فقط روی اندروید کار می‌کند.")
+                print("ACTION_DENIED: Not on Android or Android components missing.")
                 return
+
             try:
+                print(f"DEBUG: Requesting capture for action: {action}, requestCode: {request_code}")
                 self.pending_action = action
                 activity = PythonActivity.mActivity
                 MediaProjectionManager = autoclass("android.media.projection.MediaProjectionManager")
@@ -219,30 +260,43 @@ try:
                 intent = mgr.createScreenCaptureIntent()
                 activity.startActivityForResult(intent, request_code)
                 self.status_label.text = ftext("منتظر تأیید مجوز...")
+                print("DEBUG: Screen capture intent started.")
             except Exception as e:
                 self.status_label.text = ftext(f"خطا در درخواست مجوز: {e}")
+                print(f"ERROR: Exception in _request_capture: {e}")
+                print(f"ERROR: Full traceback: {traceback.format_exc()}")
 
         def start_recording(self, instance):
+            print("BUTTON_PRESS: start_recording called.")
             self._request_capture("record", REQUEST_RECORD)
 
         def take_screenshot(self, instance):
+            print("BUTTON_PRESS: take_screenshot called.")
             self._request_capture("screenshot", REQUEST_SCREENSHOT)
 
         def on_activity_result(self, request_code, result_code, data):
+            print(f"DEBUG: on_activity_result called with requestCode: {request_code}, resultCode: {result_code}")
             if request_code not in (REQUEST_RECORD, REQUEST_SCREENSHOT):
-                return
-            if result_code != -1:
-                self.status_label.text = ftext("مجوز رد شد")
-                self.pending_action = None
+                print("DEBUG: Ignored - unknown request code.")
                 return
 
+            if result_code != -1: # -1 یعنی کاربر تأیید کرده است
+                self.status_label.text = ftext("مجوز رد شد")
+                self.pending_action = None
+                print("ACTION_DENIED: User denied permission.")
+                return
+
+            # اگر مجوز گرفته شد
             action = ACTION_START if request_code == REQUEST_RECORD else ACTION_SCREENSHOT
             self.status_label.text = ftext("مجوز گرفته شد...")
+            print("DEBUG: Permission granted, proceeding to _start_service.")
             self._start_service(action, result_code, data)
 
         def _start_service(self, action, result_code, data):
+            print(f"DEBUG: Entering _start_service for action: {action}")
             if PythonActivity is None or autoclass is None or cast is None:
                 self.status_label.text = ftext("Android init failed")
+                print("ERROR: Android components missing in _start_service.")
                 return
             try:
                 activity = PythonActivity.mActivity
@@ -252,22 +306,33 @@ try:
                 Bundle = autoclass('android.os.Bundle')
                 extras = Bundle()
                 extras.putInt("resultCode", result_code)
-                extras.putParcelable("data", cast('android.os.Parcelable', data))
+                # اطمینان از اینکه data قابل Parcelable است
+                if data is not None:
+                    extras.putParcelable("data", cast('android.os.Parcelable', data))
+                else:
+                    print("WARNING: 'data' is None in _start_service.")
+
                 service_intent.putExtras(extras)
 
                 if BuildVersion is not None and BuildVersion.SDK_INT >= 26:
                     activity.startForegroundService(service_intent)
+                    print("DEBUG: Called startForegroundService.")
                 else:
                     activity.startService(service_intent)
+                    print("DEBUG: Called startService.")
 
                 self.status_label.text = ftext("در حال ضبط..." if action == ACTION_START else "در حال گرفتن عکس...")
+                print(f"DEBUG: Service started for action: {action}.")
             except Exception as e:
                 self.status_label.text = ftext(f"خطا در شروع سرویس: {e}")
+                print(f"ERROR: Exception in _start_service: {e}")
+                print(f"ERROR: Full traceback: {traceback.format_exc()}")
 
         def stop_recording(self, instance):
-            if not self._update_connectivity_ui():
-                return
+            print("BUTTON_PRESS: stop_recording called.")
+            # اتصال اینترنت را چک نمی‌کنیم چون استاپ کردن سرویس نیازی به اینترنت ندارد
             if platform != "android" or PythonActivity is None or Intent is None or autoclass is None:
+                print("ACTION_DENIED: Not on Android or Android components missing for stop_recording.")
                 return
             try:
                 activity = PythonActivity.mActivity
@@ -275,15 +340,24 @@ try:
                 service_intent.setAction(ACTION_STOP)
                 activity.startService(service_intent)
                 self.status_label.text = ftext("ضبط متوقف شد")
+                print("DEBUG: Stop service intent sent.")
             except Exception as e:
                 self.status_label.text = ftext(f"خطا در توقف سرویس: {e}")
+                print(f"ERROR: Exception in stop_recording: {e}")
+                print(f"ERROR: Full traceback: {traceback.format_exc()}")
 
         # ---------- باز کردن دکمه شناور ----------
         def open_floating_widget(self, instance):
-            if not self._update_connectivity_ui():
-                return
+            print("BUTTON_PRESS: open_floating_widget called.")
+            # برای باز کردن دکمه شناور، وضعیت اتصال مهم نیست، مگر اینکه خود دکمه شناور نیاز به اینترنت داشته باشد
+            # if not self._is_connected():
+            #     self.status_label.text = ftext("برای استفاده از دکمه شناور، اینترنت لازم است.")
+            #     print("ACTION_DENIED: Internet not connected, cannot open floating widget.")
+            #     return
+
             if platform != "android" or PythonActivity is None or autoclass is None:
-                self.status_label.text = ftext("فقط روی اندروید")
+                self.status_label.text = ftext("این قابلیت فقط روی اندروید کار می‌کند.")
+                print("ACTION_DENIED: Not on Android or Android components missing for floating widget.")
                 return
             try:
                 Settings = autoclass('android.provider.Settings')
@@ -292,6 +366,7 @@ try:
                 has_permission = True
                 if BuildVersion is not None and BuildVersion.SDK_INT >= 23:
                     has_permission = Settings.canDrawOverlays(activity)
+                    print(f"DEBUG: canDrawOverlays permission status: {has_permission}")
 
                 if not has_permission:
                     Uri = autoclass('android.net.Uri')
@@ -302,34 +377,49 @@ try:
                     )
                     activity.startActivity(intent)
                     self.status_label.text = ftext("لطفاً اجازه نمایش روی برنامه‌های دیگر را فعال کنید")
+                    print("DEBUG: Navigated to overlay permission settings.")
                     return
 
                 floating_intent = Intent(activity, autoclass(FLOATING_SERVICE_CLASS))
                 if BuildVersion is not None and BuildVersion.SDK_INT >= 26:
                     activity.startForegroundService(floating_intent)
+                    print("DEBUG: Called startForegroundService for floating widget.")
                 else:
                     activity.startService(floating_intent)
+                    print("DEBUG: Called startService for floating widget.")
 
                 self.status_label.text = ftext("دکمه شناور فعال شد")
             except Exception as e:
                 self.status_label.text = ftext(f"خطا در باز کردن دکمه شناور: {e}")
+                print(f"ERROR: Exception in open_floating_widget: {e}")
+                print(f"ERROR: Full traceback: {traceback.format_exc()}")
 
     if __name__ == "__main__":
+        print("Starting ScreenRecorderApp...")
         ScreenRecorderApp().run()
+        print("ScreenRecorderApp finished.")
 
 except Exception:
     error_msg = traceback.format_exc()
+    print(f"FATAL ERROR: Uncaught exception: {error_msg}") # پرینت خطای اصلی
     try:
-        with open("error_log.txt", "w") as f:
+        # تلاش برای نوشتن در فایل لاگ
+        with open("error_log.txt", "w", encoding="utf-8") as f:
             f.write(error_msg)
-    except:
-        pass
+            print("Error details written to error_log.txt")
+    except Exception as log_err:
+        print(f"Failed to write error to file: {log_err}")
+
     try:
-        from jnius import autoclass
-        PythonActivity = autoclass('org.kivy.android.PythonActivity')
-        Toast = autoclass('android.widget.Toast')
-        activity = PythonActivity.mActivity
-        Toast.makeText(activity, "Error:\n" + error_msg[:200], Toast.LENGTH_LONG).show()
-    except:
-        pass
-    print(error_msg)
+        # تلاش برای نمایش پیام خطا در اندروید
+        if platform == "android":
+            from jnius import autoclass
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            Toast = autoclass('android.widget.Toast')
+            activity = PythonActivity.mActivity
+            # کوتاه کردن پیام خطا برای نمایش در Toast
+            short_error_msg = error_msg[:200] + "..." if len(error_msg) > 200 else error_msg
+            Toast.makeText(activity, f"Error:\n{short_error_msg}", Toast.LENGTH_LONG).show()
+            print("Displayed error message in Android Toast.")
+    except Exception as toast_err:
+        print(f"Failed to display error in Toast: {toast_err}")
