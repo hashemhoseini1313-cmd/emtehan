@@ -9,12 +9,13 @@ import android.os.Build;
 import android.util.Log; // برای لاگ کردن
 
 public class NetworkMonitor {
-    private static final String TAG = "NetworkMonitor"; // برای لاگ کردن
+    private static final String TAG = "NetworkMonitor"; // تگ برای لاگ کردن
 
     // volatile ضروری است تا تغییرات آن در ترد های مختلف بلافاصله دیده شود
-    public static volatile boolean isConnected = false; // بهتر است با false شروع شود و وضعیت اولیه چک شود
+    // مقدار اولیه آن را false قرار می دهیم تا وضعیت واقعی بررسی شود
+    public static volatile boolean isConnected = false;
 
-    // برای نگهداری آخرین وضعیت تشخیص داده شده
+    // برای نگهداری آخرین وضعیت تشخیص داده شده، تا فقط در صورت تغییر، isConnected را بروزرسانی کنیم
     private static volatile boolean lastKnownConnectionState = false;
 
     public static void startMonitoring(Context context) {
@@ -28,31 +29,33 @@ public class NetworkMonitor {
 
             // چک وضعیت اولیه در لحظه راه‌اندازی
             checkCurrentNetwork(cm);
-            lastKnownConnectionState = isConnected; // ذخیره وضعیت اولیه
+            lastKnownConnectionState = isConnected; // وضعیت اولیه را ذخیره می کنیم
             Log.d(TAG, "Initial connection state: " + isConnected);
 
 
             NetworkRequest request = new NetworkRequest.Builder()
                     .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    // .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) // این را در اینجا اضافه نکنید، در onCapabilitiesChanged چک می شود
+                    // .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) // این را اینجا اضافه نکنید، در onCapabilitiesChanged چک می شود
                     .build();
 
+            // ثبت NetworkCallback برای دریافت تغییرات شبکه
             cm.registerNetworkCallback(request, new ConnectivityManager.NetworkCallback() {
                 @Override
                 public void onAvailable(Network network) {
                     super.onAvailable(network);
                     Log.d(TAG, "Network available: " + network);
-                    // onAvailable فقط نشان می دهد شبکه ای پیدا شده، باید قابلیت هایش را هم چک کنیم
-                    // برای اطمینان بیشتر، اینجا وضعیت را true نمی گذاریم و منتظر onCapabilitiesChanged می مانیم
+                    // onAvailable فقط نشان می دهد شبکه ای پیدا شده، باید قابلیت هایش را هم چک کنیم.
+                    // برای اطمینان بیشتر، اینجا وضعیت را true نمی گذاریم و منتظر onCapabilitiesChanged می مانیم.
                 }
 
                 @Override
                 public void onLost(Network network) {
                     super.onLost(network);
                     Log.d(TAG, "Network lost: " + network);
+                    // وقتی شبکه از دست می رود، اتصال قطع است
                     isConnected = false;
                     lastKnownConnectionState = false;
-                    // اینجا باید حتماً وضعیت را false بگذاریم
+                    Log.d(TAG, "Connection status updated to false due to network lost.");
                 }
 
                 @Override
@@ -66,18 +69,18 @@ public class NetworkMonitor {
                         boolean hasInternetCapability = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
                         boolean isValidated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
 
+                        // وضعیت فعلی اتصال اینترنت معتبر
                         boolean currentConnectionState = hasInternetCapability && isValidated;
 
                         Log.d(TAG, "Network state: hasInternet=" + hasInternetCapability + ", isValidated=" + isValidated + ", currentConnectionState=" + currentConnectionState);
 
-                        // فقط اگر وضعیت تغییر کرده باشد، متغیر را بروز رسانی کن
+                        // فقط اگر وضعیت واقعی اتصال تغییر کرده باشد، متغیر isConnected را بروز رسانی کن
                         if (currentConnectionState != lastKnownConnectionState) {
                             isConnected = currentConnectionState;
-                            lastKnownConnectionState = currentConnectionState;
+                            lastKnownConnectionState = currentConnectionState; // وضعیت جدید را ذخیره کن
                             Log.d(TAG, "Connection status updated to: " + isConnected);
-                            // اینجا می توانید یک Event bus یا broadcast sender راه اندازی کنید
-                            // تا بخش پایتون (main.py) از تغییر وضعیت مطلع شود
-                            // در حال حاضر، main.py هر ثانیه isConnected را چک می کند
+                            // در اینجا لازم نیست کار خاصی برای اطلاع دادن به پایتون انجام دهید،
+                            // چون پایتون هر ثانیه isConnected را چک می کند.
                         } else {
                             Log.d(TAG, "Connection status unchanged. Keeping: " + isConnected);
                         }
@@ -96,7 +99,7 @@ public class NetworkMonitor {
                 public void onLinkPropertiesChanged(Network network, android.net.LinkProperties linkProperties) {
                     super.onLinkPropertiesChanged(network, linkProperties);
                     Log.d(TAG, "Network link properties changed for network " + network);
-                    // می توانید اینجا نیز وضعیت اتصال را چک کنید اگرچه معمولا onCapabilitiesChanged کافی است
+                    // این متد معمولاً برای جزئیات بیشتر شبکه است و برای چک کردن اتصال اینترنت کافی نیست.
                 }
             });
             Log.d(TAG, "NetworkCallback registered successfully.");
@@ -107,10 +110,11 @@ public class NetworkMonitor {
         }
     }
 
+    // متد برای چک کردن وضعیت فعلی شبکه (مخصوصاً در زمان شروع برنامه)
     public static void checkCurrentNetwork(ConnectivityManager cm) {
         Log.d(TAG, "Checking current network state...");
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) { // برای اندروید نسخه M (API 23) به بالا
                 Network activeNet = cm.getActiveNetwork();
                 if (activeNet != null) {
                     NetworkCapabilities caps = cm.getNetworkCapabilities(activeNet);
@@ -128,8 +132,7 @@ public class NetworkMonitor {
                     Log.d(TAG, "Current network (API M+): No active network found.");
                     isConnected = false;
                 }
-            } else {
-                // برای API های قدیمی تر از M
+            } else { // برای API های قدیمی تر از M
                 android.net.NetworkInfo netInfo = cm.getActiveNetworkInfo();
                 isConnected = (netInfo != null && netInfo.isConnected());
                 Log.d(TAG, "Current network (Pre-M): isConnected=" + isConnected + " from " + netInfo);
@@ -141,5 +144,16 @@ public class NetworkMonitor {
             isConnected = false; // در صورت خطا، اتصال را قطع فرض کن
             lastKnownConnectionState = false;
         }
+    }
+
+    /**
+     * متد Getter برای دسترسی پایتون به وضعیت اتصال اینترنت.
+     * این متد مقدار volatile isConnected را برمی گرداند.
+     * @return true اگر اینترنت متصل و معتبر باشد، در غیر این صورت false.
+     */
+    public static boolean getIsConnected() {
+        // volatile boolean isConnected = false; // این متغیر از قبل در کلاس تعریف شده است
+        Log.d(TAG, "getIsConnected() called. Returning: " + isConnected);
+        return isConnected;
     }
 }
