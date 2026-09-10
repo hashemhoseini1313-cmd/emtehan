@@ -9,20 +9,21 @@ import android.os.Build;
 
 public class NetworkMonitor {
     public static volatile boolean isConnected = true;
+    private static ConnectivityManager connectivityManager;
 
     public static void startMonitoring(Context context) {
         try {
-            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            if (cm == null) return;
+            connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivityManager == null) return;
 
             // چک وضعیت اولیه
-            checkCurrentNetwork(cm);
+            checkState();
 
             NetworkRequest request = new NetworkRequest.Builder()
                     .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                     .build();
 
-            cm.registerNetworkCallback(request, new ConnectivityManager.NetworkCallback() {
+            connectivityManager.registerNetworkCallback(request, new ConnectivityManager.NetworkCallback() {
                 @Override
                 public void onAvailable(Network network) {
                     isConnected = true;
@@ -36,9 +37,8 @@ public class NetworkMonitor {
                 @Override
                 public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
                     if (capabilities != null) {
-                        // حذف NET_CAPABILITY_VALIDATED برای پاسخ‌دهی آنی و بدون تاخیر
-                        boolean hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-                        isConnected = hasInternet;
+                        // حذف NET_CAPABILITY_VALIDATED برای پاسخ‌دهی آنی
+                        isConnected = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
                     }
                 }
             });
@@ -47,22 +47,31 @@ public class NetworkMonitor {
         }
     }
 
-    public static void checkCurrentNetwork(ConnectivityManager cm) {
+    public static boolean checkState() {
+        if (connectivityManager == null) {
+            return isConnected;
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Network activeNet = cm.getActiveNetwork();
-                if (activeNet != null) {
-                    NetworkCapabilities caps = cm.getNetworkCapabilities(activeNet);
-                    isConnected = caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-                } else {
+                Network activeNet = connectivityManager.getActiveNetwork();
+                if (activeNet == null) {
                     isConnected = false;
+                    return false;
                 }
+                NetworkCapabilities caps = connectivityManager.getNetworkCapabilities(activeNet);
+                isConnected = (caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));
             } else {
-                android.net.NetworkInfo netInfo = cm.getActiveNetworkInfo();
-                isConnected = netInfo != null && netInfo.isConnected();
+                android.net.NetworkInfo netInfo = connectivityManager.getActiveNetworkInfo();
+                isConnected = (netInfo != null && netInfo.isConnected());
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+        return isConnected;
+    }
+
+    public static void checkCurrentNetwork(ConnectivityManager cm) {
+        connectivityManager = cm;
+        checkState();
     }
 }
