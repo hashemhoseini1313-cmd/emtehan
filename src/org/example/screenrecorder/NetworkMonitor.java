@@ -13,11 +13,12 @@ public class NetworkMonitor {
 
     public static void startMonitoring(Context context) {
         try {
-            connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (context == null) return;
+            connectivityManager = (ConnectivityManager) context.getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
             if (connectivityManager == null) return;
 
             // چک وضعیت اولیه
-            checkState();
+            checkState(context);
 
             NetworkRequest request = new NetworkRequest.Builder()
                     .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -37,7 +38,6 @@ public class NetworkMonitor {
                 @Override
                 public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
                     if (capabilities != null) {
-                        // حذف NET_CAPABILITY_VALIDATED برای پاسخ‌دهی آنی
                         isConnected = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
                     }
                 }
@@ -47,11 +47,15 @@ public class NetworkMonitor {
         }
     }
 
-    public static boolean checkState() {
-        if (connectivityManager == null) {
-            return isConnected;
-        }
+    public static boolean checkState(Context context) {
         try {
+            if (connectivityManager == null && context != null) {
+                connectivityManager = (ConnectivityManager) context.getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+            }
+            if (connectivityManager == null) {
+                return isConnected;
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 Network activeNet = connectivityManager.getActiveNetwork();
                 if (activeNet == null) {
@@ -70,8 +74,13 @@ public class NetworkMonitor {
         return isConnected;
     }
 
+    // متد اورلود شده برای فراخوانی بدون پارامتر از سمت پایتون
+    public static boolean checkState() {
+        return checkState(null);
+    }
+
     public static void checkCurrentNetwork(ConnectivityManager cm) {
         connectivityManager = cm;
-        checkState();
+        checkState(null);
     }
 }
