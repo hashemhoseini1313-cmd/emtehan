@@ -17,7 +17,6 @@ public class NetworkMonitor {
             connectivityManager = (ConnectivityManager) context.getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
             if (connectivityManager == null) return;
 
-            // چک وضعیت اولیه
             checkState(context);
 
             NetworkRequest request = new NetworkRequest.Builder()
@@ -74,7 +73,7 @@ public class NetworkMonitor {
         return isConnected;
     }
 
-    // متد اورلود شده برای فراخوانی بدون پارامتر از سمت پایتون
+    // فراخوانی آسان از سمت پایتون
     public static boolean checkState() {
         return checkState(null);
     }
