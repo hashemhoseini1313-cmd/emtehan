@@ -173,9 +173,9 @@ try:
             if platform != "android":
                 return True
             try:
-                # اولویت اول: خواندن مستقیم پرچم زنده از کلاس NetworkMonitor جاوا
+                # فراخوانی متد استعلام زنده از جاوا به جای متغیر راکد
                 if NetworkMonitor is not None:
-                    return bool(NetworkMonitor.isConnected)
+                    return bool(NetworkMonitor.checkState())
 
                 if PythonActivity is None or autoclass is None:
                     return True
