@@ -4,27 +4,29 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
-import android.content.BroadcastReceiver; // Import BroadcastReceiver
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter; // Import IntentFilter
+import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri; // برای intent تنظیمات
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.Settings; // برای دسترسی به مجوزها
 import android.util.Log;
 import android.view.Gravity;
-import android.view.LayoutInflater; // Import LayoutInflater
+import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast; // برای نمایش پیام کوتاه
+import android.widget.Toast;
 
 // فرض می کنیم این کلاس NetworkMonitor در پکیج org.example.screenrecorder وجود دارد
 // import org.example.screenrecorder.NetworkMonitor; // در صورت نیاز این را اضافه کنید
@@ -34,6 +36,10 @@ public class FloatingWidgetService extends Service {
     private static final String TAG = "FloatingWidgetService";
     private static final String CHANNEL_ID = "floating_widget_channel";
     private static final int NOTIFICATION_ID = 2;
+
+    // اکشن و کلید مربوط به broadcast وضعیت شبکه (باید با NetworkMonitor یکی باشد)
+    private static final String NETWORK_STATUS_ACTION = "com.example.screenrecorder.NETWORK_STATUS_CHANGED";
+    private static final String EXTRA_IS_CONNECTED = "is_connected";
 
     private WindowManager windowManager;
     private LinearLayout rootView; // دکمه اصلی شناور
@@ -45,10 +51,6 @@ public class FloatingWidgetService extends Service {
     // --- متغیرهای جدید برای مدیریت وضعیت ویجت و شبکه ---
     private boolean isWidgetVisible = false; // آیا ویجت در حال حاضر نمایش داده می شود؟
     private boolean isInternetConnected = false; // آخرین وضعیت شناخته شده اینترنت
-
-    // اکشن و کلید مربوط به broadcast وضعیت شبکه
-    private static final String NETWORK_STATUS_ACTION = "com.example.screenrecorder.NETWORK_STATUS_CHANGED";
-    private static final String EXTRA_IS_CONNECTED = "is_connected";
 
     // BroadcastReceiver برای دریافت وضعیت شبکه
     private BroadcastReceiver networkStatusReceiver = new BroadcastReceiver() {
@@ -75,22 +77,34 @@ public class FloatingWidgetService extends Service {
         createNotificationChannel();
 
         // شروع سرویس به صورت foreground
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        } else {
+        // نوع FOREGROUND_SERVICE_TYPE_SPECIAL_USE برای اندروید 34+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ServiceInfo.ForegroundServiceType foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE;
+            // انواع دیگر ممکن است بسته به کارایی سرویس مناسب تر باشند، مثلا FOREGROUND_SERVICE_TYPE_LOCATION
+            // اما برای مثال، SPECIAL_USE مناسب است.
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
+                startForeground(NOTIFICATION_ID, buildNotification(), foregroundServiceType);
+            } else { // API 26 تا 33
+                startForeground(NOTIFICATION_ID, buildNotification());
+            }
+        } else { // API < 26
             startForeground(NOTIFICATION_ID, buildNotification());
         }
 
         windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
 
-        // *** ثبت BroadcastReceiver در onCreate ***
+        // *** شروع مانیتورینگ شبکه ***
+        // این خط اطمینان می دهد که NetworkMonitor شروع به کار کرده و وضعیت اینترنت را پیگیری می کند
+        NetworkMonitor.startMonitoring(this);
+        Log.d(TAG, "Network monitoring started.");
+
+        // *** ثبت BroadcastReceiver برای دریافت تغییرات وضعیت شبکه ***
         IntentFilter filter = new IntentFilter(NETWORK_STATUS_ACTION);
         registerReceiver(networkStatusReceiver, filter);
         Log.d(TAG, "Network status receiver registered.");
 
         // *** بررسی وضعیت اولیه اینترنت ***
-        // این را می توان از NetworkMonitor گرفت، اگر NetworkMonitor در حال اجرا باشد
-        // فرض می کنیم NetworkMonitor.getIsConnected() مقدار درست را برمی گرداند
         checkInitialNetworkState();
 
         // اضافه کردن دکمه شناور (فقط اگر اینترنت وصل باشد)
@@ -104,15 +118,10 @@ public class FloatingWidgetService extends Service {
     }
 
     private void checkInitialNetworkState() {
-        // اگر NetworkMonitor را در جای دیگری از برنامه راه اندازی کرده اید
-        // می توانید وضعیت اولیه را از آن بگیرید.
-        // اگر NetworkMonitor جداگانه اجرا نمی شود، باید آن را اینجا یا در جای دیگری راه اندازی کنید.
         try {
-            // فرض می کنیم NetworkMonitor.getIsConnected() به درستی کار می کند
-            // اگر NetworkMonitor کلاس جداگانه ای است، ممکن است نیاز به راه اندازی آن داشته باشید
-            // NetworkMonitor.startMonitoring(this); // اگر نیاز است، مانیتورینگ را اینجا شروع کنید
-            isInternetConnected = NetworkMonitor.getIsConnected(); // مقدار volatile را بخوانید
-            Log.d(TAG, "Initial internet connection state: " + isInternetConnected);
+            // وضعیت اولیه را از NetworkMonitor می گیریم
+            isInternetConnected = NetworkMonitor.getIsConnected();
+            Log.d(TAG, "Initial internet connection state from NetworkMonitor: " + isInternetConnected);
         } catch (Exception e) {
             Log.e(TAG, "Could not get initial network state from NetworkMonitor.", e);
             isInternetConnected = false; // فرض می کنیم قطع است در صورت خطا
@@ -123,7 +132,7 @@ public class FloatingWidgetService extends Service {
         if (isInternetConnected) {
             // اگر اینترنت وصل است و ویجت هنوز نمایش داده نشده، آن را نمایش بده
             if (!isWidgetVisible) {
-                addFloatingButton(); // دوباره دکمه را اضافه می کنیم
+                addFloatingButton();
                 isWidgetVisible = true;
                 Log.d(TAG, "Internet connected, showing floating widget.");
                 Toast.makeText(this, "اینترنت وصل شد، شناور ظاهر شد", Toast.LENGTH_SHORT).show();
@@ -142,7 +151,9 @@ public class FloatingWidgetService extends Service {
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, "Floating Button", NotificationManager.IMPORTANCE_LOW);
+                    CHANNEL_ID, "Floating Widget Service", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("کانال نوتیفیکیشن برای سرویس دکمه شناور");
+            channel.setSound(null); // معمولا برای این نوع سرویس ها صدا نیاز نیست
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm != null) {
                 nm.createNotificationChannel(channel);
@@ -151,30 +162,40 @@ public class FloatingWidgetService extends Service {
     }
 
     private Notification buildNotification() {
-        Notification.Builder builder;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder = new Notification.Builder(this, CHANNEL_ID);
-        } else {
-            builder = new Notification.Builder(this);
-        }
-        return builder
+        // اطمینان از وجود CHANNEL_ID برای API های جدیدتر
+        String channelId = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? CHANNEL_ID : "";
+
+        Notification.Builder builder = new Notification.Builder(this, channelId)
                 .setContentTitle("دکمه شناور فعال است")
-                .setSmallIcon(android.R.drawable.ic_menu_camera) // آیکون کوچک مناسب را انتخاب کنید
-                .build();
+                .setContentText("برای باز کردن منو، دکمه را لمس کنید")
+                .setSmallIcon(android.R.drawable.ic_menu_camera) // یک آیکون کوچک مناسب را انتخاب کنید
+                .setPriority(Notification.PRIORITY_LOW) // اولویت پایین برای نوتیفیکیشن foreground
+                .setOngoing(true); // نوتیفیکیشن دائم
+
+        // اگر لازم است با کلیک روی نوتیفیکیشن برنامه باز شود
+        /*
+        Intent notificationIntent = new Intent(this, YourMainActivity.class); // نام کلاس اصلی برنامه خود را جایگزین کنید
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
+        builder.setContentIntent(pendingIntent);
+        */
+
+        return builder.build();
     }
 
     private int overlayType() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // برای API 26 و بالاتر، نیاز به مجوز TYPE_APPLICATION_OVERLAY است
             return WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
         } else {
+            // برای API های قدیمی تر، TYPE_PHONE کافی است
             return WindowManager.LayoutParams.TYPE_PHONE;
         }
     }
 
     private void addFloatingButton() {
-        // اگر دکمه از قبل وجود دارد، آن را اضافه نکن
+        // اگر دکمه از قبل وجود دارد و در پنجره است، کاری نکن
         if (rootView != null && rootView.isAttachedToWindow()) {
-            Log.d(TAG, "Floating button already exists.");
+            Log.d(TAG, "Floating button already exists and is attached.");
             return;
         }
         Log.d(TAG, "Adding floating button.");
@@ -199,8 +220,9 @@ public class FloatingWidgetService extends Service {
         rootParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                overlayType(),
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, // مهم: برای اینکه فوکوس را نگیرد
+                overlayType(), // نوع window manager
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | // مهم: برای اینکه فوکوس را نگیرد
+                               WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, // اطمینان از اینکه در کل صفحه چیدمان شود
                 PixelFormat.TRANSLUCENT
         );
         rootParams.gravity = Gravity.TOP | Gravity.START;
@@ -214,16 +236,19 @@ public class FloatingWidgetService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "Error adding floating button to window manager", e);
             isWidgetVisible = false;
-            // ممکن است نیاز به درخواست مجوز TYPE_APPLICATION_OVERLAY باشد
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            // بررسی و درخواست مجوز TYPE_APPLICATION_OVERLAY در صورت نیاز
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && overlayType() == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY && !Settings.canDrawOverlays(this)) {
                 Toast.makeText(this, "لطفا مجوز نمایش روی برنامه های دیگر را فعال کنید.", Toast.LENGTH_LONG).show();
-                // می توانید کاربر را به صفحه تنظیمات هدایت کنید
-                // Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
-                // startActivity(intent);
+                // هدایت کاربر به صفحه تنظیمات برای فعال کردن مجوز
+                Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_HISTORY);
+                startActivity(intent);
+            } else {
+                 Toast.makeText(this, "خطا در افزودن دکمه شناور.", Toast.LENGTH_SHORT).show();
             }
         }
 
-
+        // تنظیم OnTouchListener برای جابجایی و کلیک
         rootView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
             private float initialTouchX, initialTouchY;
@@ -232,7 +257,7 @@ public class FloatingWidgetService extends Service {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 // فقط در صورتی لمس را پردازش کن که ویجت قابل مشاهده باشد
-                if (!isWidgetVisible) return false;
+                if (!isWidgetVisible || rootView == null || !rootView.isAttachedToWindow()) return false;
 
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
@@ -249,9 +274,13 @@ public class FloatingWidgetService extends Service {
                         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) moved = true;
                         rootParams.x = initialX + dx;
                         rootParams.y = initialY + dy;
+
                         // محدود کردن موقعیت دکمه در صفحه (اختیاری)
-                        // rootParams.x = Math.max(0, Math.min(rootParams.x, windowManager.getDefaultDisplay().getWidth() - rootView.getWidth()));
-                        // rootParams.y = Math.max(0, Math.min(rootParams.y, windowManager.getDefaultDisplay().getHeight() - rootView.getHeight()));
+                        // می توانید از metrics صفحه نمایش برای این کار استفاده کنید
+                        // WindowManager.LayoutParams lp = ...; // دریافت ابعاد صفحه
+                        // rootParams.x = Math.max(0, Math.min(rootParams.x, screenWidth - rootView.getWidth()));
+                        // rootParams.y = Math.max(0, Math.min(rootParams.y, screenHeight - rootView.getHeight()));
+
                         windowManager.updateViewLayout(rootView, rootParams);
                         return true;
                     case MotionEvent.ACTION_UP:
@@ -277,12 +306,11 @@ public class FloatingWidgetService extends Service {
             } catch (Exception e) {
                 Log.e(TAG, "Error removing floating button from window manager", e);
             }
+        } else {
+             // اگر دکمه از قبل وجود ندارد یا attach نشده، فقط isWidgetVisible را false کن
+             isWidgetVisible = false;
         }
     }
-
-    // ---------- اصلاح: نمایش اجباری دکمه‌ی شناور ----------
-    // تابع refreshOverlay را حذف می کنیم، چون removeFloatingButton و addFloatingButton
-    // کار را انجام می دهند. اگر نیاز به refresh بود، این دو تابع را فراخوانی می کنیم.
 
     private void toggleMenu(WindowManager.LayoutParams anchorParams) {
         if (!isWidgetVisible) return; // اگر ویجت مخفی است، کاری نکن
@@ -295,8 +323,7 @@ public class FloatingWidgetService extends Service {
 
     private void openMenu(WindowManager.LayoutParams anchorParams) {
         if (menuView != null && menuView.isAttachedToWindow()) {
-            // اگر منو از قبل باز است، آن را نبند، فقط پارامترها را تنظیم کن
-            // یا اینجا منطق دیگری پیاده کن
+            // اگر منو از قبل باز است، آن را نبند
             return;
         }
         Log.d(TAG, "Opening menu...");
@@ -327,6 +354,7 @@ public class FloatingWidgetService extends Service {
         );
         menuParams.gravity = Gravity.TOP | Gravity.START;
         // موقعیت منو نسبت به دکمه اصلی
+        // این مقادیر را می توان بر اساس اندازه دکمه اصلی و منو تنظیم کرد
         menuParams.x = anchorParams.x + 140; // کمی جابجایی به راست
         menuParams.y = anchorParams.y;
 
@@ -373,9 +401,10 @@ public class FloatingWidgetService extends Service {
     private void requestCapture(String action) {
         try {
             // فرض می کنیم CaptureRequestActivity در همان پکیج است
+            // اکشن را به Intent اضافه می کنیم
             Intent intent = new Intent(this, CaptureRequestActivity.class);
             intent.putExtra(CaptureRequestActivity.EXTRA_ACTION, action);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION); // Important flags
             startActivity(intent);
 
             // پس از اینکه کاربر مجوز را داد یا رد کرد و Activity بسته شد،
@@ -392,19 +421,22 @@ public class FloatingWidgetService extends Service {
     // تابعی برای اطمینان از نمایش مجدد ویجت پس از بستن پنجره مجوز
     private void refreshWidgetAfterCaptureActivity() {
         Log.d(TAG, "Checking widget visibility after CaptureRequestActivity...");
+
+        // اطمینان از فعال بودن مانیتورینگ شبکه
+        NetworkMonitor.startMonitoring(this);
+        Log.d(TAG, "Network monitoring ensured to be active for refresh.");
+
         // ابتدا وضعیت اینترنت را دوباره چک می کنیم
-        // NetworkMonitor.startMonitoring(this); // اگر لازم است دوباره شروع کنید
         isInternetConnected = NetworkMonitor.getIsConnected(); // خواندن آخرین وضعیت
 
         // سپس بر اساس وضعیت اینترنت، ویجت را نمایش یا مخفی می کنیم
         updateWidgetVisibility();
     }
 
-
     private void stopRecordingDirect() {
         Intent stopIntent = new Intent(this, ScreenCaptureService.class);
         stopIntent.setAction(ScreenCaptureService.ACTION_STOP);
-        startService(stopIntent);
+        startService(stopIntent); // استفاده از startService برای اطمینان از اجرای سرویس
         Toast.makeText(this, "ضبط متوقف شد", Toast.LENGTH_SHORT).show();
     }
 
@@ -412,28 +444,39 @@ public class FloatingWidgetService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "Service onStartCommand...");
 
-        // اینجا می توانید دستوراتی را از Intent پردازش کنید
-        // مثلا اگر کاربر روی اعلان کلیک کرد و برنامه باز شد،
-        // یا اگر دکمه "باز کردن شناور" در برنامه اصلی فشرده شد.
-
-        // اگر intent حاوی دستوری برای نمایش ویجت است (مثلا از دکمه در UI برنامه)
-        if (intent != null && intent.getAction() != null && intent.getAction().equals("ACTION_SHOW_FLOATING_WIDGET")) {
-            Log.d(TAG, "Received ACTION_SHOW_FLOATING_WIDGET");
-            // اطمینان از اتصال اینترنت قبل از نمایش
-            if (NetworkMonitor.getIsConnected()) {
-                if (!isWidgetVisible) {
-                    addFloatingButton();
-                    isWidgetVisible = true;
+        // پردازش دستورات از Intent
+        if (intent != null) {
+            String action = intent.getAction();
+            if ("ACTION_SHOW_FLOATING_WIDGET".equals(action)) {
+                Log.d(TAG, "Received ACTION_SHOW_FLOATING_WIDGET");
+                // اطمینان از اتصال اینترنت قبل از نمایش
+                // NetworkMonitor.startMonitoring(this); // اطمینان حاصل کنید که مانیتورینگ فعال است
+                isInternetConnected = NetworkMonitor.getIsConnected();
+                if (isInternetConnected) {
+                    if (!isWidgetVisible) {
+                        addFloatingButton();
+                        isWidgetVisible = true;
+                    }
+                } else {
+                    Log.d(TAG, "Cannot show widget, internet is not connected.");
+                    Toast.makeText(this, "نمی‌توان شناور را فعال کرد، اینترنت متصل نیست.", Toast.LENGTH_SHORT).show();
                 }
-            } else {
-                Log.d(TAG, "Cannot show widget, internet is not connected.");
-                Toast.makeText(this, "نمی‌توان شناور را فعال کرد، اینترنت متصل نیست.", Toast.LENGTH_SHORT).show();
-            }
-        } else if (intent != null && intent.getAction() != null && intent.getAction().equals("ACTION_HIDE_FLOATING_WIDGET")) {
-            Log.d(TAG, "Received ACTION_HIDE_FLOATING_WIDGET");
-            if (isWidgetVisible) {
-                removeFloatingButton();
-                isWidgetVisible = false;
+            } else if ("ACTION_HIDE_FLOATING_WIDGET".equals(action)) {
+                Log.d(TAG, "Received ACTION_HIDE_FLOATING_WIDGET");
+                if (isWidgetVisible) {
+                    removeFloatingButton();
+                    isWidgetVisible = false;
+                }
+            } else if (action != null && action.equals(NETWORK_STATUS_ACTION)) {
+                 // اگر اینتنت مستقیما broadcast باشد، آن را نادیده میگیریم چون receiver آن را پردازش میکند
+                 // اما اگر برنامه بخواهد مستقیما این اکشن را به onStartCommand بفرستد
+                 // باید اینجا هم پردازش شود
+                 boolean connected = intent.getBooleanExtra(EXTRA_IS_CONNECTED, false);
+                 Log.d(TAG, "Received network status in onStartCommand: " + connected);
+                 if (connected != isInternetConnected) {
+                    isInternetConnected = connected;
+                    updateWidgetVisibility();
+                 }
             }
         }
 
@@ -456,6 +499,10 @@ public class FloatingWidgetService extends Service {
             Log.w(TAG, "Network status receiver was not registered or already unregistered.", e);
         }
 
+        // *** توقف مانیتورینگ شبکه ***
+        NetworkMonitor.stopMonitoring(this);
+        Log.d(TAG, "Network monitoring stopped.");
+
         // پاکسازی ویجت و منو از صفحه
         removeFloatingButton();
         closeMenu();
@@ -470,154 +517,3 @@ public class FloatingWidgetService extends Service {
         return null;
     }
 }
-
-// --- کدی که باید در کلاس NetworkMonitor.java داشته باشید (اگر ندارید) ---
-/*
-package org.example.screenrecorder;
-
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
-import android.net.NetworkRequest;
-import android.os.Build;
-import android.util.Log;
-
-public class NetworkMonitor {
-    private static final String TAG = "NetworkMonitor";
-
-    // تعریف اکشن و کلید برای broadcast (باید با FloatingWidgetService یکی باشد)
-    public static final String NETWORK_STATUS_ACTION = "com.example.screenrecorder.NETWORK_STATUS_CHANGED";
-    public static final String EXTRA_IS_CONNECTED = "is_connected";
-
-    private static volatile boolean isConnected = false;
-    private static volatile boolean lastKnownConnectionState = false;
-    private static ConnectivityManager.NetworkCallback networkCallback;
-    private static Context appContext; // برای ثبت/عدم ثبت receiver و ارسال broadcast
-
-    public static void startMonitoring(Context context) {
-        Log.d(TAG, "Starting network monitoring...");
-        appContext = context.getApplicationContext();
-
-        try {
-            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            if (cm == null) {
-                Log.e(TAG, "ConnectivityManager is null.");
-                return;
-            }
-
-            // بررسی وضعیت اولیه
-            checkCurrentNetwork(cm);
-            lastKnownConnectionState = isConnected;
-            Log.d(TAG, "Initial connection state: " + isConnected);
-            sendStatusBroadcast(appContext, isConnected); // ارسال وضعیت اولیه
-
-            NetworkRequest request = new NetworkRequest.Builder()
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) // مهم برای اطمینان از اتصال معتبر
-                    .build();
-
-            if (networkCallback == null) {
-                networkCallback = new ConnectivityManager.NetworkCallback() {
-                    @Override
-                    public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
-                        super.onCapabilitiesChanged(network, capabilities);
-                        Log.d(TAG, "Network capabilities changed for network " + network);
-
-                        if (capabilities != null) {
-                            boolean hasInternetCapability = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-                            boolean isValidated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
-                            boolean currentConnectionState = hasInternetCapability && isValidated;
-
-                            updateConnectionStatus(currentConnectionState);
-                        } else {
-                            Log.w(TAG, "NetworkCapabilities is null.");
-                            updateConnectionStatus(false); // اگر capabilities null بود، یعنی معتبر نیست
-                        }
-                    }
-
-                    @Override
-                    public void onLost(Network network) {
-                        super.onLost(network);
-                        Log.d(TAG, "Network lost: " + network);
-                        updateConnectionStatus(false); // شبکه از دست رفت، پس قطع است
-                    }
-                };
-            }
-
-            cm.registerNetworkCallback(request, networkCallback);
-            Log.d(TAG, "NetworkCallback registered.");
-
-        } catch (Exception e) {
-            Log.e(TAG, "Error during network monitoring setup: ", e);
-            updateConnectionStatus(false); // در صورت خطا، قطع فرض شود
-        }
-    }
-
-    private static synchronized void updateConnectionStatus(boolean newStatus) {
-        if (newStatus != lastKnownConnectionState) {
-            isConnected = newStatus;
-            lastKnownConnectionState = newStatus;
-            Log.d(TAG, "Connection status updated to: " + isConnected);
-            if (appContext != null) {
-                sendStatusBroadcast(appContext, isConnected);
-            } else {
-                Log.w(TAG, "AppContext is null, cannot send status broadcast.");
-            }
-        }
-    }
-
-    private static void sendStatusBroadcast(Context context, boolean isConnected) {
-        Intent intent = new Intent(NETWORK_STATUS_ACTION);
-        intent.putExtra(EXTRA_IS_CONNECTED, isConnected);
-        context.sendBroadcast(intent);
-        Log.d(TAG, "Sent network status broadcast: " + isConnected);
-    }
-
-    public static void stopMonitoring(Context context) {
-        Log.d(TAG, "Stopping network monitoring...");
-        try {
-            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            if (cm != null && networkCallback != null) {
-                cm.unregisterNetworkCallback(networkCallback);
-                networkCallback = null;
-                Log.d(TAG, "NetworkCallback unregistered.");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error stopping network monitoring: ", e);
-        }
-        appContext = null; // پاک کردن context
-    }
-
-    // چک کردن وضعیت فعلی شبکه (برای زمان شروع)
-    public static void checkCurrentNetwork(ConnectivityManager cm) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Network activeNet = cm.getActiveNetwork();
-                if (activeNet != null) {
-                    NetworkCapabilities caps = cm.getNetworkCapabilities(activeNet);
-                    isConnected = (caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED));
-                } else {
-                    isConnected = false;
-                }
-            } else {
-                android.net.NetworkInfo netInfo = cm.getActiveNetworkInfo();
-                isConnected = (netInfo != null && netInfo.isConnected());
-            }
-            lastKnownConnectionState = isConnected; // وضعیت اولیه را هم ثبت کن
-        } catch (Exception e) {
-            Log.e(TAG, "Error checking current network: ", e);
-            isConnected = false;
-            lastKnownConnectionState = false;
-        }
-    }
-
-    public static boolean getIsConnected() {
-        // Log.d(TAG, "getIsConnected() called. Returning: " + isConnected); // ممکن است لاگ زیاد شود
-        return isConnected;
-    }
-}
-*/
