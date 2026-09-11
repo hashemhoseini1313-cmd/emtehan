@@ -25,6 +25,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -63,8 +64,23 @@ public class ScreenCaptureService extends Service {
 
     private int screenWidth, screenHeight, screenDensity;
 
-    // فایل موقت داخلی که ابتدا ضبط در آن انجام می‌شود، سپس به گالری منتقل می‌شود
     private File tempRecordingFile;
+
+    // چک دوره‌ای اینترنت
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable networkCheckRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!isInternetConnected()) {
+                Log.w(TAG, "Internet disconnected during capture → stopping");
+                stopRecording();
+                stopForeground(true);
+                stopSelf();
+                return;
+            }
+            mainHandler.postDelayed(this, 1000); // هر ۱ ثانیه
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -84,6 +100,15 @@ public class ScreenCaptureService extends Service {
         screenDensity = metrics.densityDpi;
     }
 
+    private boolean isInternetConnected() {
+        try {
+            return NetworkMonitor.isConnected;
+        } catch (Exception e) {
+            Log.e(TAG, "Error reading NetworkMonitor", e);
+            return true;
+        }
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || intent.getAction() == null) {
@@ -93,8 +118,16 @@ public class ScreenCaptureService extends Service {
         String action = intent.getAction();
 
         if (ACTION_STOP.equals(action)) {
+            mainHandler.removeCallbacks(networkCheckRunnable);
             stopRecording();
             stopForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        // قبل از شروع، اینترنت را چک کن
+        if (!isInternetConnected()) {
+            Log.w(TAG, "No internet → refuse to start capture");
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -131,6 +164,8 @@ public class ScreenCaptureService extends Service {
 
         if (ACTION_START.equals(action)) {
             startRecording();
+            // شروع چک دوره‌ای اینترنت
+            mainHandler.post(networkCheckRunnable);
         } else if (ACTION_SCREENSHOT.equals(action)) {
             takeScreenshot();
         }
@@ -139,8 +174,6 @@ public class ScreenCaptureService extends Service {
     }
 
     private void startRecording() {
-        // ضبط ابتدا در یک فایل موقت داخل حافظه‌ی خصوصی اپ انجام می‌شود
-        // (چون MediaRecorder برای نوشتن مستقیم روی MediaStore به مسیر فایل نیاز دارد)
         File tempDir = getCacheDir();
         String fileName = "record_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".mp4";
         tempRecordingFile = new File(tempDir, fileName);
@@ -306,7 +339,6 @@ public class ScreenCaptureService extends Service {
             mediaProjection = null;
         }
 
-        // انتقال فایل موقت به گالری عمومی از طریق MediaStore
         if (recorderStoppedOk && tempRecordingFile != null && tempRecordingFile.exists()) {
             moveVideoToGallery(tempRecordingFile);
             tempRecordingFile = null;
@@ -385,6 +417,7 @@ public class ScreenCaptureService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        mainHandler.removeCallbacks(networkCheckRunnable);
         stopRecording();
         cleanupScreenshot();
         if (workerThread != null) {
@@ -396,4 +429,4 @@ public class ScreenCaptureService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-            }
+                    }
