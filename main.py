@@ -102,7 +102,7 @@ try:
             if "text" in kwargs:
                 kwargs["text"] = ftext(kwargs["text"])
             kwargs.setdefault("font_name", _FONT_NAME)
-            kwargs.setdefault("halign", "right")
+            kwargs.setdefault("halign", "center")
             kwargs.setdefault("text_size", (None, None))
             super().__init__(**kwargs)
 
@@ -120,42 +120,47 @@ try:
     class ScreenRecorderApp(App):
         def build(self):
             self.pending_action = None
-            self.status_label = PersianLabel(text="آماده", font_size="18sp", size_hint_y=None, height=45)
+            self.status_label = PersianLabel(text="آماده", font_size="18sp", size_hint_y=None, height=50)
 
             # رنگ پس‌زمینه نارنجی
             Window.clearcolor = (1.0, 0.45, 0.0, 1)
 
-            layout = BoxLayout(orientation="vertical", padding=25, spacing=18)
+            layout = BoxLayout(orientation="vertical", padding=25, spacing=15)
 
+            # فضای خالی بالا
+            layout.add_widget(Widget(size_hint_y=0.25))
+
+            # عنوان
             title = PersianLabel(text="ثبت صفحه", font_size="28sp", size_hint_y=None, height=70)
+            layout.add_widget(title)
 
-            # ردیف اول دکمه‌ها (۲ تا بالا)
+            # متن وضعیت (آماده / اینترنت قطع و ...)
+            layout.add_widget(self.status_label)
+
+            # فضای خالی وسط تا دکمه‌ها پایین بمانند
+            layout.add_widget(Widget())
+
+            # ردیف اول دکمه‌ها
             top_row = BoxLayout(orientation="horizontal", spacing=15, size_hint_y=None, height=90)
             self.start_button = PersianButton(text="شروع ضبط", font_size="18sp")
             self.stop_button = PersianButton(text="توقف ضبط", font_size="18sp")
             top_row.add_widget(self.start_button)
             top_row.add_widget(self.stop_button)
 
-            # ردیف دوم دکمه‌ها (۲ تا پایین)
+            # ردیف دوم دکمه‌ها
             bottom_row = BoxLayout(orientation="horizontal", spacing=15, size_hint_y=None, height=90)
             self.photo_button = PersianButton(text="عکس از صفحه", font_size="18sp")
             self.floating_button = PersianButton(text="دکمه شناور", font_size="18sp")
             bottom_row.add_widget(self.photo_button)
             bottom_row.add_widget(self.floating_button)
 
+            layout.add_widget(top_row)
+            layout.add_widget(bottom_row)
+
             self.start_button.bind(on_press=self.start_recording)
             self.stop_button.bind(on_press=self.stop_recording)
             self.photo_button.bind(on_press=self.take_screenshot)
             self.floating_button.bind(on_press=self.open_floating_widget)
-
-            # ترتیب از بالا به پایین
-            layout.add_widget(title)
-            layout.add_widget(self.status_label)
-            layout.add_widget(top_row)
-            layout.add_widget(bottom_row)
-
-            # فضای خالی پایین تا عنوان و دکمه‌ها بالا بمانند
-            layout.add_widget(Widget())
 
             if platform == "android":
                 try:
