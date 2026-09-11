@@ -122,7 +122,7 @@ try:
 
             layout = BoxLayout(orientation="vertical", padding=30, spacing=15)
 
-            title = PersianLabel(text="ضبط صفحه گوشی (اندروید 15)", font_size="24sp")
+            title = PersianLabel(text="ثبت صفحه", font_size="24sp")
             self.start_button = PersianButton(text="شروع ضبط صفحه", font_size="18sp", size_hint_y=None, height=65)
             self.stop_button = PersianButton(text="توقف ضبط", font_size="18sp", size_hint_y=None, height=65)
             self.photo_button = PersianButton(text="عکس از صفحه", font_size="18sp", size_hint_y=None, height=65)
