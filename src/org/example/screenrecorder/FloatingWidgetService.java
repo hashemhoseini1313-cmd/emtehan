@@ -32,8 +32,18 @@ public class FloatingWidgetService extends Service {
     private LinearLayout rootView;
     private LinearLayout menuView;
     private boolean menuOpen = false;
+    private boolean isFloatingVisible = false;
     private WindowManager.LayoutParams rootParams;
     private final Handler handler = new Handler(Looper.getMainLooper());
+
+    // چک دوره‌ای وضعیت اینترنت - هر ۱ ثانیه
+    private final Runnable networkCheckRunnable = new Runnable() {
+        @Override
+        public void run() {
+            updateFloatingVisibility();
+            handler.postDelayed(this, 1000); // هر ۱ ثانیه چک کن
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -41,13 +51,16 @@ public class FloatingWidgetService extends Service {
         createNotificationChannel();
 
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            startForeground(NOTIFICATION_ID, buildNotification(true), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else {
-            startForeground(NOTIFICATION_ID, buildNotification());
+            startForeground(NOTIFICATION_ID, buildNotification(true));
         }
 
         windowManager = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
         addFloatingButton();
+
+        // شروع چک دوره‌ای اینترنت
+        handler.post(networkCheckRunnable);
     }
 
     private void createNotificationChannel() {
@@ -59,17 +72,69 @@ public class FloatingWidgetService extends Service {
         }
     }
 
-    private Notification buildNotification() {
+    private Notification buildNotification(boolean connected) {
         Notification.Builder builder;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             builder = new Notification.Builder(this, CHANNEL_ID);
         } else {
             builder = new Notification.Builder(this);
         }
+
+        if (connected) {
+            builder.setContentTitle("دکمه شناور فعال است");
+        } else {
+            builder.setContentTitle("دکمه شناور موقتاً غیرفعال");
+            builder.setContentText("اتصال اینترنت برقرار نیست");
+        }
+
         return builder
-                .setContentTitle("دکمه شناور فعال است")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .build();
+    }
+
+    private void updateNotification(boolean connected) {
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) {
+            nm.notify(NOTIFICATION_ID, buildNotification(connected));
+        }
+    }
+
+    private boolean isInternetConnected() {
+        try {
+            return NetworkMonitor.isConnected;
+        } catch (Exception e) {
+            Log.e(TAG, "Error reading NetworkMonitor", e);
+            return true;
+        }
+    }
+
+    private void updateFloatingVisibility() {
+        boolean connected = isInternetConnected();
+
+        if (connected) {
+            if (!isFloatingVisible && rootView != null) {
+                try {
+                    windowManager.addView(rootView, rootParams);
+                    isFloatingVisible = true;
+                    Log.d(TAG, "Floating button shown (internet connected)");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error showing floating button", e);
+                }
+            }
+            updateNotification(true);
+        } else {
+            if (isFloatingVisible && rootView != null) {
+                try {
+                    closeMenu();
+                    windowManager.removeView(rootView);
+                    isFloatingVisible = false;
+                    Log.d(TAG, "Floating button hidden (internet disconnected)");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error hiding floating button", e);
+                }
+            }
+            updateNotification(false);
+        }
     }
 
     private int overlayType() {
@@ -109,7 +174,12 @@ public class FloatingWidgetService extends Service {
         rootParams.x = 0;
         rootParams.y = 300;
 
-        windowManager.addView(rootView, rootParams);
+        try {
+            windowManager.addView(rootView, rootParams);
+            isFloatingVisible = true;
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding floating button", e);
+        }
 
         rootView.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
@@ -118,6 +188,10 @@ public class FloatingWidgetService extends Service {
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
+                if (!isInternetConnected()) {
+                    return true;
+                }
+
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                         initialX = rootParams.x;
@@ -145,14 +219,9 @@ public class FloatingWidgetService extends Service {
         });
     }
 
-    // ---------- اصلاح: نمایش اجباری دکمه‌ی شناور ----------
-    // اندروید هنگام نمایش پاپ‌آپ حساس (مثل مجوز MediaProjection)، به‌طور خودکار
-    // پنجره‌های شناور (Overlay) را مخفی می‌کند تا از حملات tapjacking جلوگیری شود.
-    // روی برخی گوشی‌ها (مثل سامسونگ) این پنجره بعد از بسته‌شدن پاپ‌آپ خودکار
-    // برنمی‌گردد، پس دستی حذف و دوباره اضافه‌اش می‌کنیم تا مطمئن شویم نمایش داده می‌شود.
     private void refreshOverlay() {
         try {
-            if (rootView != null && windowManager != null) {
+            if (rootView != null && windowManager != null && isFloatingVisible) {
                 windowManager.removeView(rootView);
                 windowManager.addView(rootView, rootParams);
             }
@@ -162,6 +231,8 @@ public class FloatingWidgetService extends Service {
     }
 
     private void toggleMenu(WindowManager.LayoutParams anchorParams) {
+        if (!isInternetConnected()) return;
+
         if (menuOpen) {
             closeMenu();
         } else {
@@ -223,6 +294,9 @@ public class FloatingWidgetService extends Service {
         item.setTextSize(16);
         item.setPadding(20, 20, 20, 20);
         item.setOnClickListener(v -> {
+            if (!isInternetConnected()) {
+                return;
+            }
             action.run();
             closeMenu();
         });
@@ -230,13 +304,14 @@ public class FloatingWidgetService extends Service {
     }
 
     private void requestCapture(String action) {
+        if (!isInternetConnected()) return;
+
         try {
             Intent intent = new Intent(this, CaptureRequestActivity.class);
             intent.putExtra(CaptureRequestActivity.EXTRA_ACTION, action);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
             startActivity(intent);
 
-            // بعد از بسته‌شدن پاپ‌آپ مجوز، دکمه‌ی شناور را دستی دوباره نمایش می‌دهیم
             handler.postDelayed(this::refreshOverlay, 1500);
         } catch (Exception e) {
             Log.e(TAG, "خطا در باز کردن CaptureRequestActivity", e);
@@ -244,6 +319,8 @@ public class FloatingWidgetService extends Service {
     }
 
     private void stopRecordingDirect() {
+        if (!isInternetConnected()) return;
+
         Intent stopIntent = new Intent(this, ScreenCaptureService.class);
         stopIntent.setAction(ScreenCaptureService.ACTION_STOP);
         startService(stopIntent);
@@ -254,7 +331,7 @@ public class FloatingWidgetService extends Service {
         super.onDestroy();
         handler.removeCallbacksAndMessages(null);
         closeMenu();
-        if (rootView != null) {
+        if (rootView != null && isFloatingVisible) {
             try {
                 windowManager.removeView(rootView);
             } catch (Exception ignored) {
@@ -266,4 +343,4 @@ public class FloatingWidgetService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-    }
+}
