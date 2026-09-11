@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 SERVICE_XML = """
     <service
@@ -14,7 +15,7 @@ SERVICE_XML = """
         <property
             android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
             android:value="floating_control_button" />
-    </service>
+    </service
     <activity
         android:name="org.example.screenrecorder.CaptureRequestActivity"
         android:theme="@android:style/Theme.Translucent.NoTitleBar"
@@ -43,18 +44,26 @@ def after_apk_build(toolchain):
     manifest_file = Path(toolchain._dist.dist_dir) / "src" / "main" / "AndroidManifest.xml"
     manifest = manifest_file.read_text(encoding="utf-8")
 
-    # ۱. تزریق سرویس‌ها و اکتیویتی به داخل تگ application
+    # ۱. تزریق سرویس‌ها و اکتیویتی
     if "ScreenCaptureService" not in manifest:
         manifest = manifest.replace("</application>", f"{SERVICE_XML}\n</application>")
         print("[hook] سرویس‌ها به AndroidManifest.xml اضافه شدند")
     else:
         print("[hook] سرویس‌ها از قبل در مانیفست بودند، رد شد")
 
-    # ۲. تزریق مجوزها درست قبل از تگ شروع application (ساختار کاملاً استاندارد XML)
+    # ۲. تزریق مجوزها
     if "FOREGROUND_SERVICE_MEDIA_PROJECTION" not in manifest:
         manifest = manifest.replace("<application", f"{PERMISSIONS_XML}\n<application")
         print("[hook] مجوزهای اضافی به AndroidManifest.xml اضافه شدند")
     else:
         print("[hook] مجوزها از قبل در مانیفست بودند، رد شد")
+
+    # ۳. تغییر نام برنامه به «ثبت صفحه»
+    if 'android:label=' in manifest:
+        manifest = re.sub(r'android:label="[^"]*"', 'android:label="ثبت صفحه"', manifest)
+        print("[hook] نام برنامه به «ثبت صفحه» تغییر کرد")
+    else:
+        manifest = manifest.replace("<application", '<application android:label="ثبت صفحه"')
+        print("[hook] نام برنامه اضافه شد")
 
     manifest_file.write_text(manifest, encoding="utf-8")
