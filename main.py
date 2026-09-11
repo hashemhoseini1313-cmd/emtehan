@@ -9,6 +9,7 @@ try:
     from kivy.uix.boxlayout import BoxLayout
     from kivy.uix.button import Button
     from kivy.uix.label import Label
+    from kivy.uix.widget import Widget
     from kivy.core.text import LabelBase
     from kivy.core.window import Window
     from kivy.utils import platform
@@ -124,7 +125,7 @@ try:
             # رنگ پس‌زمینه نارنجی
             Window.clearcolor = (1.0, 0.45, 0.0, 1)
 
-            layout = BoxLayout(orientation="vertical", padding=25, spacing=20)
+            layout = BoxLayout(orientation="vertical", padding=25, spacing=18)
 
             title = PersianLabel(text="ثبت صفحه", font_size="28sp", size_hint_y=None, height=70)
 
@@ -147,10 +148,14 @@ try:
             self.photo_button.bind(on_press=self.take_screenshot)
             self.floating_button.bind(on_press=self.open_floating_widget)
 
+            # ترتیب از بالا به پایین
             layout.add_widget(title)
             layout.add_widget(self.status_label)
             layout.add_widget(top_row)
             layout.add_widget(bottom_row)
+
+            # فضای خالی پایین تا عنوان و دکمه‌ها بالا بمانند
+            layout.add_widget(Widget())
 
             if platform == "android":
                 try:
