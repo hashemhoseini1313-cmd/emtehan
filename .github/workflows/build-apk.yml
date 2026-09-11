@@ -63,11 +63,8 @@ jobs:
 
     - name: Clean build cache (deep)
       run: |
-        rm -rf .buildozer ~/.buildozer ~/.cache/p4a ~/.local/share/python-for-android
+        rm -rf .buildozer \~/.buildozer \~/.cache/p4a \~/.local/share/python-for-android
 
-    # نکته: p4a 2024.01.21 فقط NDK 25b رو به‌عنوان نسخه‌ی توصیه‌شده می‌شناسه.
-    # با هر نسخه‌ی دیگه (مثل 23b)، چون CI محیط تعاملی نیست، p4a با خطا قطع می‌شه.
-    # اگه با 25b به مشکل libffi برخوردیم، باید راه‌حل دیگه‌ای غیر از تغییر نسخه NDK پیدا کنیم.
     - name: Download and install NDK r25b
       run: |
         wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
@@ -88,7 +85,7 @@ jobs:
         p4a apk \
           --private . \
           --package=org.example.screenrecorder \
-          --name "Screen Recorder" \
+          --name "ثبت صفحه" \
           --version 1.0 \
           --bootstrap=sdl2 \
           --requirements=python3==3.10.12,hostpython3==3.10.12,kivy==2.3.0,arabic_reshaper,python-bidi,pyjnius,android \
@@ -98,6 +95,7 @@ jobs:
           --sdk-dir=/home/runner/android-sdk \
           --ndk-dir=/home/runner/.buildozer/android/platform/android-ndk-r25b \
           --dist-name=screenrecorder \
+          --icon icon.png \
           --permission INTERNET \
           --permission ACCESS_NETWORK_STATE \
           --permission READ_MEDIA_IMAGES \
