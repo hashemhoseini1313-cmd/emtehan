@@ -125,23 +125,23 @@ try:
             # رنگ پس‌زمینه نارنجی
             Window.clearcolor = (1.0, 0.45, 0.0, 1)
 
-            layout = BoxLayout(orientation="vertical", padding=25, spacing=15)
+            layout = BoxLayout(orientation="vertical", padding=25, spacing=12)
 
             # فضای خالی بالا
-            layout.add_widget(Widget(size_hint_y=0.30))
+            layout.add_widget(Widget(size_hint_y=0.28))
 
             # عنوان
             title = PersianLabel(text="ثبت صفحه", font_size="28sp", size_hint_y=None, height=70)
             layout.add_widget(title)
 
-            # فضای خالی بزرگ وسط تا وضعیت و دکمه‌ها پایین‌تر بروند
-            layout.add_widget(Widget())
+            # فضای خالی متوسط (تا وضعیت داخل کادر قرمز قرار بگیرد)
+            layout.add_widget(Widget(size_hint_y=0.22))
 
-            # متن وضعیت (آماده / مجوز / اینترنت قطع) — نزدیک دکمه‌ها
+            # متن وضعیت (آماده / مجوز / اینترنت قطع) — دقیقاً داخل کادر قرمز
             layout.add_widget(self.status_label)
 
-            # کمی فاصله قبل از دکمه‌ها
-            layout.add_widget(Widget(size_hint_y=None, height=20))
+            # فضای خالی باقی‌مانده تا دکمه‌ها پایین بمانند
+            layout.add_widget(Widget())
 
             # ردیف اول دکمه‌ها
             top_row = BoxLayout(orientation="horizontal", spacing=15, size_hint_y=None, height=90)
