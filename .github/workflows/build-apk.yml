@@ -42,13 +42,6 @@ jobs:
         pip install Cython==0.29.36
         pip install python-for-android==2024.01.21
 
-    - name: Compile Cython module (app_logic.pyx)
-      run: |
-        # تبدیل app_logic.pyx به کد C
-        cython app_logic.pyx -3 --directive language_level=3
-        echo "Cython compilation finished"
-        ls -la app_logic.*
-
     - name: Install Android SDK and accept licenses
       run: |
         mkdir -p $HOME/android-sdk/cmdline-tools
@@ -95,7 +88,7 @@ jobs:
           --name "ثبت صفحه" \
           --version 1.0 \
           --bootstrap=sdl2 \
-          --requirements=python3==3.10.12,hostpython3==3.10.12,kivy==2.3.0,arabic_reshaper,python-bidi,pyjnius,android,cython \
+          --requirements=python3==3.10.12,hostpython3==3.10.12,kivy==2.3.0,arabic_reshaper,python-bidi,pyjnius,android \
           --arch=arm64-v8a \
           --android-api=35 \
           --ndk-api=26 \
