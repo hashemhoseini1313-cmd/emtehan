@@ -128,17 +128,20 @@ try:
             layout = BoxLayout(orientation="vertical", padding=25, spacing=15)
 
             # فضای خالی بالا
-            layout.add_widget(Widget(size_hint_y=0.25))
+            layout.add_widget(Widget(size_hint_y=0.30))
 
             # عنوان
             title = PersianLabel(text="ثبت صفحه", font_size="28sp", size_hint_y=None, height=70)
             layout.add_widget(title)
 
-            # متن وضعیت (آماده / اینترنت قطع و ...)
+            # فضای خالی بزرگ وسط تا وضعیت و دکمه‌ها پایین‌تر بروند
+            layout.add_widget(Widget())
+
+            # متن وضعیت (آماده / مجوز / اینترنت قطع) — نزدیک دکمه‌ها
             layout.add_widget(self.status_label)
 
-            # فضای خالی وسط تا دکمه‌ها پایین بمانند
-            layout.add_widget(Widget())
+            # کمی فاصله قبل از دکمه‌ها
+            layout.add_widget(Widget(size_hint_y=None, height=20))
 
             # ردیف اول دکمه‌ها
             top_row = BoxLayout(orientation="horizontal", spacing=15, size_hint_y=None, height=90)
