@@ -7,7 +7,7 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.Toast; // برای نمایش پیام به کاربر در صورت بروز مشکل
+import android.widget.Toast;
 
 public class CaptureRequestActivity extends Activity {
 
@@ -15,11 +15,9 @@ public class CaptureRequestActivity extends Activity {
     public static final String EXTRA_ACTION = "capture_action";
     private static final int REQUEST_CODE = 5001;
 
-    // برای ذخیره وضعیت و جلوگیری از اجرای چندباره
-    private boolean processingResult = false;
-    private String actionToPerform; // اکشنی که باید به سرویس ارسال شود (START/SCREENSHOT)
+    private boolean hasActivityResult = false;
+    private String actionToPerform; // اکشن اصلی (START/SCREENSHOT)
 
-    // متغیرهایی برای نگهداری نتیجه موقت
     private int tempResultCode = Activity.RESULT_CANCELED;
     private Intent tempIntentData = null;
 
@@ -28,33 +26,26 @@ public class CaptureRequestActivity extends Activity {
         super.onCreate(savedInstanceState);
         Log.d(TAG, "onCreate called");
 
-        // اگر اکتیویتی در حال بازسازی است (مثلا بعد از تغییر جهت صفحه)، وضعیت را بازیابی کن
         if (savedInstanceState != null) {
             Log.d(TAG, "Restoring state from savedInstanceState");
-            // وضعیت بازیابی شده به طور خودکار در متدهای بعدی استفاده خواهد شد
-            // اما باید مطمئن شویم که پردازش نتیجه اگر لازم بود، دوباره انجام شود.
-            processingResult = savedInstanceState.getBoolean("processingResult", false);
+            hasActivityResult = savedInstanceState.getBoolean("hasActivityResult", false);
             actionToPerform = savedInstanceState.getString("actionToPerform");
             tempResultCode = savedInstanceState.getInt("tempResultCode", Activity.RESULT_CANCELED);
             tempIntentData = savedInstanceState.getParcelable("tempIntentData");
 
-            if (processingResult) {
-                // اگر پردازش قبلا شروع شده ولی تمام نشده، دوباره پردازش کن
-                // این بخش باید با دقت مدیریت شود تا دوباره‌کاری رخ ندهد.
-                // معمولا بهتر است که پردازش را در onResume انجام دهیم.
+            if (hasActivityResult) {
+                // اگر نتیجه قبلا دریافت شده، پردازش را به onResume موکول کن
             } else {
-                 // اگر پردازش انجام نشده، Intent فعلی را پردازش کن
-                 Intent intent = getIntent();
-                 if (intent != null) {
-                     startCaptureRequest(intent);
-                 } else {
-                     Log.e(TAG, "onCreate: Received null intent and no saved state to restore.");
-                     Toast.makeText(this, "Error: Cannot start capture.", Toast.LENGTH_SHORT).show();
-                     finish();
-                 }
+                Intent intent = getIntent();
+                if (intent != null) {
+                    startCaptureRequest(intent);
+                } else {
+                    Log.e(TAG, "onCreate: Received null intent and no saved state to restore.");
+                    Toast.makeText(this, "Error: Cannot start capture.", Toast.LENGTH_SHORT).show();
+                    finish();
+                }
             }
         } else {
-            // اگر وضعیت جدید است، Intent دریافتی را پردازش کن
             Intent intent = getIntent();
             if (intent != null) {
                 startCaptureRequest(intent);
@@ -70,17 +61,22 @@ public class CaptureRequestActivity extends Activity {
         String currentAction = intent.getStringExtra(EXTRA_ACTION);
         Log.d(TAG, "Starting capture request for action: " + currentAction);
 
-        // جلوگیری از شروع چندباره درخواست اگر قبلا در حال پردازش هستیم
-        if (processingResult) {
-             Log.w(TAG, "Already processing result, ignoring new request.");
-             // اگر در حال پردازش بودیم و این اتفاق افتاد، یعنی یک مشکل در مدیریت وضعیت وجود دارد.
-             // بهتر است اکتیویتی را ببندیم تا وضعیت به حالت اولیه برگردد.
+        // اطمینان حاصل کن که actionToPerform مقدار معتبری دارد
+        if (currentAction == null || (!ScreenCaptureService.ACTION_START.equals(currentAction) && !ScreenCaptureService.ACTION_SCREENSHOT.equals(currentAction))) {
+            Log.e(TAG, "Invalid or missing action in intent: " + currentAction);
+            Toast.makeText(this, "Error: Invalid capture action.", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        // جلوگیری از شروع چندباره درخواست اگر نتیجه قبلا دریافت شده و پردازش نشده
+        if (hasActivityResult && tempResultCode != Activity.RESULT_CANCELED) {
+             Log.w(TAG, "onActivityResult already received but not processed. Ignoring new request.");
              finish();
              return;
         }
 
-        // ذخیره اکشن اصلی برای استفاده در سرویس
-        this.actionToPerform = currentAction;
+        this.actionToPerform = currentAction; // ذخیره اکشن معتبر
 
         MediaProjectionManager mgr = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         if (mgr == null) {
@@ -100,11 +96,12 @@ public class CaptureRequestActivity extends Activity {
         Log.d(TAG, "onActivityResult called: requestCode=" + requestCode + ", resultCode=" + resultCode);
 
         if (requestCode == REQUEST_CODE) {
-            // نتیجه را ذخیره کن، اما پردازش را به onResume منتقل کن
-            // این کار کمک می‌کند تا مطمئن شویم اکتیویتی در وضعیت مناسبی برای پردازش قرار دارد
+            // نتیجه را ذخیره کن و علامت‌گذاری کن که پردازش لازم است
             tempResultCode = resultCode;
             tempIntentData = data;
-            processingResult = true; // علامت‌گذاری برای پردازش در onResume
+            hasActivityResult = true; // نتیجه دریافت شده است
+
+            Log.d(TAG, "Stored result: resultCode=" + tempResultCode + ", data=" + (data != null) + ", actionToPerform=" + actionToPerform);
         } else {
             Log.w(TAG, "onActivityResult: Unhandled request code: " + requestCode);
         }
@@ -113,77 +110,96 @@ public class CaptureRequestActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        Log.d(TAG, "onResume called. processingResult=" + processingResult + ", tempResultCode=" + tempResultCode);
+        Log.d(TAG, "onResume called. hasActivityResult=" + hasActivityResult + ", tempResultCode=" + tempResultCode);
 
-        // اگر نتیجه‌ای دریافت شده بود و پردازش نشده بود، آن را پردازش کن
-        if (processingResult) {
-            // اطمینان حاصل کن که این پردازش فقط یک بار انجام شود
-            // (اینجا processingResult را false می‌کنیم تا دوباره اجرا نشود)
-            processingResult = false;
-            performActionBasedOnResult(tempResultCode, tempIntentData);
+        if (hasActivityResult) {
+            // پردازش نتیجه دریافتی
+            processAndFinish();
         } else {
-            // اگر نتیجه‌ای دریافت نشده بود، ممکن است کاربر صفحه را تغییر داده باشد
-            // و اکتیویتی در وضعیت نامعلومی باشد. در این حالت، بهتر است آن را ببندیم.
-            Log.d(TAG, "onResume: No result pending. Finishing activity.");
-            // اگر در onCreate وضعیت بازیابی شد و processingResult هنوز false بود،
-            // یعنی درخواست capture شروع نشده بود، پس نباید finish کنیم.
-            // این بخش نیاز به دقت بیشتری دارد.
-            // اگر اکتیویتی به اینجا رسید و processingResult false بود و هیچ درخواستی شروع نشده بود،
-            // یعنی یا تازه شروع شده یا وضعیت نامشخص است.
-            // اگر actionToPerform خالی است، یعنی درخواست capture اصلا شروع نشده.
-             if (actionToPerform == null && tempResultCode == Activity.RESULT_CANCELED) {
-                 // این حالت نباید رخ دهد مگر اینکه برنامه بسته شده باشد.
-                 Log.w(TAG, "onResume: Activity is resuming without any pending action or result.");
-             } else if (tempResultCode != Activity.RESULT_OK) {
-                 // اگر نتیجه OK نبود و قبلا پردازش نشده، بهتر است ببندیم.
-                 Log.d(TAG, "onResume: Previous result was not OK. Finishing activity.");
-                 finish();
-             }
-        }
-    }
-
-    private void performActionBasedOnResult(int resultCode, Intent data) {
-        Log.d(TAG, "Performing action based on result...");
-        if (resultCode == Activity.RESULT_OK && data != null && actionToPerform != null) {
-            String serviceAction = ScreenCaptureService.ACTION_SCREENSHOT.equals(actionToPerform)
-                    ? ScreenCaptureService.ACTION_SCREENSHOT
-                    : ScreenCaptureService.ACTION_START;
-
-            Intent serviceIntent = new Intent(this, ScreenCaptureService.class);
-            serviceIntent.setAction(serviceAction);
-            serviceIntent.putExtra("resultCode", resultCode);
-            serviceIntent.putExtra("data", data);
-            serviceIntent.putExtra("calling_action", actionToPerform); // اکشن اصلی
-
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(serviceIntent);
-                    Log.d(TAG, "Started foreground service for action: " + serviceAction);
-                } else {
-                    startService(serviceIntent);
-                    Log.d(TAG, "Started service for action: " + serviceAction);
-                }
-                // پردازش با موفقیت انجام شد، حالا اکتیویتی را ببند
-                finishAndCleanUp();
-            } catch (Exception e) {
-                Log.e(TAG, "Error starting service: " + e.getMessage(), e);
-                Toast.makeText(this, "Error starting capture service.", Toast.LENGTH_SHORT).show();
-                // اگر شروع سرویس ناموفق بود، اکتیویتی را ببند
-                finishAndCleanUp();
+            // اگر نتیجه‌ای دریافت نشده، بررسی کن که آیا اکتیویتی باید بسته شود
+            if (actionToPerform == null && tempResultCode == Activity.RESULT_CANCELED) {
+                Log.d(TAG, "onResume: No pending action or result. Finishing activity.");
+                 if (!isFinishing()) {
+                    finish();
+                 }
+            } else if (tempResultCode != Activity.RESULT_OK) {
+                // اگر نتیجه OK نبود و پردازش نشده، ببند.
+                Log.d(TAG, "onResume: Previous result was not OK. Finishing activity.");
+                 if (!isFinishing()) {
+                    finish();
+                 }
             }
-        } else {
-            Log.d(TAG, "Result not OK or data is null or actionToPerform is null. Finishing activity.");
-            // اگر نتیجه OK نبود یا اطلاعات لازم را نداشتیم، اکتیویتی را ببند
-            Toast.makeText(this, "Capture permission denied or cancelled.", Toast.LENGTH_SHORT).show();
-            finishAndCleanUp();
         }
     }
 
-    // متدی برای فراخوانی finish() و انجام کارهای تمیزکاری نهایی
+    private void processAndFinish() {
+        Log.d(TAG, "Processing result and finishing...");
+
+        // 1. بررسی صحت ورودی‌ها
+        if (actionToPerform == null) {
+            Log.e(TAG, "Cannot process: actionToPerform is null.");
+            Toast.makeText(this, "Internal error: Capture action not specified.", Toast.LENGTH_SHORT).show();
+            if (!isFinishing()) finish();
+            return;
+        }
+        if (tempResultCode != Activity.RESULT_OK) {
+            Log.d(TAG, "Result code is not OK: " + tempResultCode);
+            Toast.makeText(this, "Capture permission denied or cancelled.", Toast.LENGTH_SHORT).show();
+            if (!isFinishing()) finish();
+            return;
+        }
+        if (tempIntentData == null) {
+            Log.e(TAG, "Cannot process: tempIntentData is null.");
+            Toast.makeText(this, "Error: Capture data is missing.", Toast.LENGTH_SHORT).show();
+            if (!isFinishing()) finish();
+            return;
+        }
+
+        // 2. تعیین اکشن سرویس
+        String serviceAction;
+        if (ScreenCaptureService.ACTION_SCREENSHOT.equals(actionToPerform)) {
+            serviceAction = ScreenCaptureService.ACTION_SCREENSHOT;
+            Log.d(TAG, "Determined service action: ACTION_SCREENSHOT");
+        } else if (ScreenCaptureService.ACTION_START.equals(actionToPerform)) {
+            serviceAction = ScreenCaptureService.ACTION_START;
+            Log.d(TAG, "Determined service action: ACTION_START");
+        } else {
+            Log.e(TAG, "Unknown actionToPerform: " + actionToPerform);
+            Toast.makeText(this, "Error: Unknown capture action.", Toast.LENGTH_SHORT).show();
+            if (!isFinishing()) finish();
+            return;
+        }
+
+        // 3. ساخت Intent برای سرویس و ارسال آن
+        Intent serviceIntent = new Intent(this, ScreenCaptureService.class);
+        serviceIntent.setAction(serviceAction);
+        serviceIntent.putExtra("resultCode", tempResultCode);
+        serviceIntent.putExtra("data", tempIntentData);
+        serviceIntent.putExtra("calling_action", actionToPerform); // اکشن اصلی
+
+        Log.d(TAG, "Attempting to start service with action: " + serviceAction);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+                Log.d(TAG, "Started foreground service successfully.");
+            } else {
+                startService(serviceIntent);
+                Log.d(TAG, "Started service successfully.");
+            }
+            // پردازش موفقیت‌آمیز بود، اکتیویتی را ببند
+            if (!isFinishing()) finish();
+        } catch (Exception e) {
+            Log.e(TAG, "Error starting service: " + e.getMessage(), e);
+            Toast.makeText(this, "Error starting capture service.", Toast.LENGTH_SHORT).show();
+            // اگر شروع سرویس ناموفق بود، اکتیویتی را ببند
+            if (!isFinishing()) finish();
+        }
+    }
+
+    // متدی برای فراخوانی finish() و انجام کارهای تمیزکاری نهایی (اگر لازم باشد)
+    // این متد فعلا استفاده نمی‌شود ولی برای آینده قابل توسعه است
     private void finishAndCleanUp() {
-        Log.d(TAG, "Finishing activity and cleaning up.");
-        // اطمینان حاصل کنید که finish() فقط یک بار فراخوانی می‌شود
-        // (مثلا با بررسی اینکه آیا اکتیویتی از قبل تمام شده است یا نه)
+        Log.d(TAG, "Finish and clean up called.");
         if (!isFinishing()) {
             finish();
         }
@@ -193,39 +209,29 @@ public class CaptureRequestActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         Log.d(TAG, "onSaveInstanceState called");
-        outState.putBoolean("processingResult", processingResult);
+        outState.putBoolean("hasActivityResult", hasActivityResult);
         outState.putString("actionToPerform", actionToPerform);
         outState.putInt("tempResultCode", tempResultCode);
         outState.putParcelable("tempIntentData", tempIntentData);
     }
 
-    // onDestroy نیازی به finish() ندارد
     @Override
     protected void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "onDestroy called");
     }
 
-    // مدیریت onNewIntent برای singleInstance
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         Log.d(TAG, "onNewIntent called");
         setIntent(intent); // مهم: Intent جدید را تنظیم کن
 
-        // اگر در حال پردازش نتیجه قبلی بودیم، ممکن است لازم باشد آن را لغو کنیم
-        // و پردازش Intent جدید را شروع کنیم.
-        // برای سادگی، اینجا فرض می‌کنیم که این اکتیویتی فقط یک بار باید اجرا شود.
-        // اگر Intent جدیدی آمد، بهتر است که اکتیویتی فعلی را ببندیم و یک نمونه جدید ایجاد شود
-        // یا حداقل پردازش قبلی را متوقف کنیم.
-
-        // برای جلوگیری از پیچیدگی، فرض می‌کنیم که اگر onNewIntent فراخوانی شد،
-        // یعنی کاربر دوباره درخواست را شروع کرده. پس وضعیت قبلی را ریست می‌کنیم
-        // و پردازش Intent جدید را آغاز می‌کنیم.
-        processingResult = false;
+        // ریست کردن وضعیت برای پردازش Intent جدید
+        hasActivityResult = false;
         tempResultCode = Activity.RESULT_CANCELED;
         tempIntentData = null;
-        actionToPerform = null; // ریست کردن اکشن قبلی
+        actionToPerform = null;
 
         startCaptureRequest(intent);
     }
