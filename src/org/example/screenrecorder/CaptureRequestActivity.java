@@ -13,7 +13,6 @@ public class CaptureRequestActivity extends Activity {
     private static final int REQUEST_CODE = 5001;
 
     private String pendingAction;
-    private boolean requested = false;
     private boolean resultReceived = false;
     private int pendingResultCode;
     private Intent pendingData;
@@ -21,14 +20,22 @@ public class CaptureRequestActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        startCaptureRequest(getIntent());
+    }
 
-        if (requested) {
-            finish();
-            return;
-        }
-        requested = true;
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        // چون این Activity از نوع singleInstance است، اگر نمونه‌ی قبلی هنوز زنده باشد
+        // سیستم به‌جای onCreate، این متد را صدا می‌زند. باید درخواست جدید را
+        // از نو پردازش کنیم، نه اینکه فقط finish() کنیم (که باعث عدم پاسخ اپ می‌شد).
+        resultReceived = false;
+        startCaptureRequest(intent);
+    }
 
-        pendingAction = getIntent().getStringExtra(EXTRA_ACTION);
+    private void startCaptureRequest(Intent intent) {
+        pendingAction = intent.getStringExtra(EXTRA_ACTION);
 
         MediaProjectionManager mgr =
                 (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
@@ -74,16 +81,8 @@ public class CaptureRequestActivity extends Activity {
                 }
             }
 
-            // مهم: finish() باید مستقیم و بدون تأخیر (نه با Handler.post) از داخل
-            // خود onResume() صدا زده شود؛ چون سیستم بلافاصله بعد از برگشتن onResume()
-            // چک می‌کند که آیا finish() صدا زده شده یا نه، و Handler.post دیر اجرا می‌شود.
+            // مهم: finish() باید مستقیم و بدون تأخیر از داخل onResume() صدا زده شود.
             finish();
         }
-    }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        finish();
     }
 }
