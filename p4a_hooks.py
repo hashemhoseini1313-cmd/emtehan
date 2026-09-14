@@ -1,5 +1,5 @@
 from pathlib import Path
-import shutil
+import re
 
 SERVICE_XML = """
     <service
@@ -18,7 +18,7 @@ SERVICE_XML = """
     </service>
     <activity
         android:name="org.example.screenrecorder.CaptureRequestActivity"
-        android:theme="@android:style/Theme.NoDisplay"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
         android:excludeFromRecents="true"
         android:launchMode="singleInstance"
         android:process=":capture"
@@ -40,61 +40,30 @@ PERMISSIONS_XML = """
 """
 
 
-def before_apk_build(toolchain):
-    # ---------- اضافه‌کردن Proguard/R8 برای مبهم‌سازی کد جاوا ----------
-    dist_dir = Path(toolchain._dist.dist_dir)
-    build_gradle_file = dist_dir / "build.gradle"
-    proguard_target = dist_dir / "proguard-rules.pro"
-    proguard_source = Path(__file__).parent / "proguard-rules.pro"
-
-    try:
-        if proguard_source.exists():
-            shutil.copy(str(proguard_source), str(proguard_target))
-            print("[hook] proguard-rules.pro کپی شد")
-        else:
-            print("[hook] هشدار: proguard-rules.pro در ریشه‌ی پروژه پیدا نشد")
-
-        if build_gradle_file.exists():
-            content = build_gradle_file.read_text(encoding="utf-8")
-
-            if "minifyEnabled true" not in content:
-                marker = "buildTypes {"
-                if marker in content:
-                    injection = (
-                        "buildTypes {\n"
-                        "        debug {\n"
-                        "            minifyEnabled true\n"
-                        "            shrinkResources false\n"
-                        "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'\n"
-                        "        }\n"
-                    )
-                    content = content.replace(marker, injection, 1)
-                    build_gradle_file.write_text(content, encoding="utf-8")
-                    print("[hook] minifyEnabled و proguardFiles به build.gradle اضافه شد")
-                else:
-                    print("[hook] هشدار: بخش buildTypes در build.gradle پیدا نشد")
-            else:
-                print("[hook] minifyEnabled از قبل بود، رد شد")
-        else:
-            print("[hook] هشدار: build.gradle پیدا نشد")
-    except Exception as e:
-        print(f"[hook] خطا در تنظیم Proguard: {e}")
-
-
 def after_apk_build(toolchain):
     manifest_file = Path(toolchain._dist.dist_dir) / "src" / "main" / "AndroidManifest.xml"
     manifest = manifest_file.read_text(encoding="utf-8")
 
+    # ۱. تزریق سرویس‌ها و اکتیویتی
     if "ScreenCaptureService" not in manifest:
         manifest = manifest.replace("</application>", f"{SERVICE_XML}\n</application>")
-        print("[hook] سرویس‌ها به AndroidManifest.xml اضافه شدن")
+        print("[hook] سرویس‌ها به AndroidManifest.xml اضافه شدند")
     else:
-        print("[hook] سرویس‌ها از قبل توی منیفست بودن، رد شد")
+        print("[hook] سرویس‌ها از قبل در مانیفست بودند، رد شد")
 
+    # ۲. تزریق مجوزها
     if "FOREGROUND_SERVICE_MEDIA_PROJECTION" not in manifest:
-        manifest = manifest.replace("</manifest>", f"{PERMISSIONS_XML}\n</manifest>")
-        print("[hook] مجوزهای اضافی به AndroidManifest.xml اضافه شدن")
+        manifest = manifest.replace("<application", f"{PERMISSIONS_XML}\n<application")
+        print("[hook] مجوزهای اضافی به AndroidManifest.xml اضافه شدند")
     else:
-        print("[hook] مجوزها از قبل توی منیفست بودن، رد شد")
+        print("[hook] مجوزها از قبل در مانیفست بودند، رد شد")
+
+    # ۳. تغییر نام برنامه به «ثبت صفحه»
+    if 'android:label=' in manifest:
+        manifest = re.sub(r'android:label="[^"]*"', 'android:label="ثبت صفحه"', manifest)
+        print("[hook] نام برنامه به «ثبت صفحه» تغییر کرد")
+    else:
+        manifest = manifest.replace("<application", '<application android:label="ثبت صفحه"')
+        print("[hook] نام برنامه اضافه شد")
 
     manifest_file.write_text(manifest, encoding="utf-8")
