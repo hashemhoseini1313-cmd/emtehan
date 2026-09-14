@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import shutil
 
 SERVICE_XML = """
     <service
@@ -38,6 +39,47 @@ PERMISSIONS_XML = """
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 """
+
+
+def before_apk_build(toolchain):
+    # ---------- اضافه‌کردن Proguard/R8 برای مبهم‌سازی کد جاوا ----------
+    dist_dir = Path(toolchain._dist.dist_dir)
+    build_gradle_file = dist_dir / "build.gradle"
+    proguard_target = dist_dir / "proguard-rules.pro"
+    proguard_source = Path(__file__).parent / "proguard-rules.pro"
+
+    try:
+        if proguard_source.exists():
+            shutil.copy(str(proguard_source), str(proguard_target))
+            print("[hook] proguard-rules.pro کپی شد")
+        else:
+            print("[hook] هشدار: proguard-rules.pro در ریشه‌ی پروژه پیدا نشد")
+
+        if build_gradle_file.exists():
+            content = build_gradle_file.read_text(encoding="utf-8")
+
+            if "minifyEnabled true" not in content:
+                marker = "buildTypes {"
+                if marker in content:
+                    injection = (
+                        "buildTypes {\n"
+                        "        debug {\n"
+                        "            minifyEnabled true\n"
+                        "            shrinkResources false\n"
+                        "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'\n"
+                        "        }\n"
+                    )
+                    content = content.replace(marker, injection, 1)
+                    build_gradle_file.write_text(content, encoding="utf-8")
+                    print("[hook] minifyEnabled و proguardFiles به build.gradle اضافه شد")
+                else:
+                    print("[hook] هشدار: بخش buildTypes در build.gradle پیدا نشد")
+            else:
+                print("[hook] minifyEnabled از قبل بود، رد شد")
+        else:
+            print("[hook] هشدار: build.gradle پیدا نشد")
+    except Exception as e:
+        print(f"[hook] خطا در تنظیم Proguard: {e}")
 
 
 def after_apk_build(toolchain):
