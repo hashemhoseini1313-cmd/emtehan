@@ -109,6 +109,37 @@ jobs:
         find . -type f -name "*.apk" -not -path "./bin/*" -exec cp {} bin/ \;
         ls -lah bin
 
+    - name: Decode keystore
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      run: |
+        echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+
+    - name: Sign APK
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        BUILD_TOOLS=$HOME/android-sdk/build-tools/35.0.0
+        UNSIGNED_APK=$(find bin -name "*.apk" | head -n 1)
+
+        "$BUILD_TOOLS/zipalign" -v -p 4 "$UNSIGNED_APK" bin/aligned.apk
+
+        "$BUILD_TOOLS/apksigner" sign \
+          --ks release.keystore \
+          --ks-pass pass:"$KEYSTORE_PASSWORD" \
+          --ks-key-alias "$KEY_ALIAS" \
+          --key-pass pass:"$KEY_PASSWORD" \
+          --out bin/screenrecorder-signed.apk \
+          bin/aligned.apk
+
+        "$BUILD_TOOLS/apksigner" verify bin/screenrecorder-signed.apk
+
+        rm -f "$UNSIGNED_APK" bin/aligned.apk release.keystore
+
+        ls -lah bin
+
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
